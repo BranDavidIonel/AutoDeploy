@@ -2,14 +2,14 @@
 
 ## Cerințe
 
-| Ce           | Versiune                                                     | Observații                                                                    |
-| ------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| PHP          | 8.5 (minim 8.3)                                              | pe PC: XAMPP `C:\xampp\php_8.5.12`, ales automat prin fișierul `.php-version` |
-| Extensii PHP | `openssl`, `pdo_sqlite`, `sodium`, `zip`, `phar`, `mbstring` | toate sunt active în XAMPP 8.5                                                |
-| Composer     | 2.x                                                          | `C:\xampp\php\composer.phar`                                                  |
-| Node.js      | 22+ (testat cu 26)                                           | pentru interfață și pentru build-urile locale ale proiectelor                 |
-| Git          | orice versiune recentă                                       | pentru build local (citește commit-ul)                                        |
-| Git Bash     | doar pentru servere de tip „Acest calculator" pe Windows     | `C:\Program Files\Git\bin\bash.exe`                                           |
+| Ce           | Versiune                                                     | Observații                                                                          |
+| ------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| PHP          | 8.5 (minim 8.3)                                              | pe PC: XAMPP `C:\xampp\php` sau `C:\xampp\php_<versiune>`, ales după `.php-version` |
+| Extensii PHP | `openssl`, `pdo_sqlite`, `sodium`, `zip`, `phar`, `mbstring` | toate sunt active în XAMPP 8.5                                                      |
+| Composer     | 2.x                                                          | `C:\xampp\php\composer.phar`                                                        |
+| Node.js      | 22+ (testat cu 26)                                           | pentru interfață și pentru build-urile locale ale proiectelor                       |
+| Git          | orice versiune recentă                                       | pentru build local (citește commit-ul)                                              |
+| Git Bash     | doar pentru servere de tip „Acest calculator" pe Windows     | `C:\Program Files\Git\bin\bash.exe`                                                 |
 
 Baza de date este **SQLite** (`database/database.sqlite`): nu are nevoie de MySQL pornit și nu
 se amestecă cu bazele altor proiecte din XAMPP.

@@ -4,8 +4,11 @@ rem admin user (from AUTODEPLOY_ADMIN_EMAIL / _PASSWORD in .env), interface buil
 title AutoDeploy setup
 cd /d "%~dp0"
 
+rem PHP from XAMPP: C:\xampp\php_<version> for the version in .php-version,
+rem otherwise the active XAMPP PHP in C:\xampp\php, otherwise php from the PATH.
 set /p PHPV=<.php-version
 set "PHP=C:\xampp\php_%PHPV%\php.exe"
+if not exist "%PHP%" set "PHP=C:\xampp\php\php.exe"
 if not exist "%PHP%" set "PHP=php"
 set "COMPOSER=C:\xampp\php\composer.phar"
 

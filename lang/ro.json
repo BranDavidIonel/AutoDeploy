@@ -273,6 +273,7 @@
     "Disk": "Disc",
     "Disk (/)": "Disc (/)",
     "Do this only if you know the server changed. The next connection trusts and saves whatever key the server sends.": "Fă asta doar dacă știi că serverul s-a schimbat. Următoarea conectare acceptă și salvează orice cheie trimite serverul.",
+    "Document root": "Document root (folderul public)",
     "DocumentRoot must point to": "DocumentRoot trebuie să arate spre",
     "Does not exist yet: quick setup creates it.": "Nu există încă: îl creează quick setup.",
     "Done": "Terminat",

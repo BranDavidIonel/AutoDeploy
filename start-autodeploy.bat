@@ -5,9 +5,11 @@ rem First time only: run setup-autodeploy.bat.
 title AutoDeploy
 cd /d "%~dp0"
 
-rem PHP from XAMPP, the version in .php-version (same as the other projects).
+rem PHP from XAMPP: C:\xampp\php_<version> for the version in .php-version,
+rem otherwise the active XAMPP PHP in C:\xampp\php, otherwise php from the PATH.
 set /p PHPV=<.php-version
 set "PHP=C:\xampp\php_%PHPV%\php.exe"
+if not exist "%PHP%" set "PHP=C:\xampp\php\php.exe"
 if not exist "%PHP%" set "PHP=php"
 
 if not exist vendor\autoload.php (

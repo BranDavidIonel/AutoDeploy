@@ -352,7 +352,7 @@ export default defineComponent({
                     mono: true,
                 },
                 {
-                    label: this.$t('Nginx root'),
+                    label: this.$t('Document root'),
                     value: p.paths.public,
                     mono: true,
                 },
