@@ -1,0 +1,80 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@theme inline {
+    --font-sans:
+        Instrument Sans, ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+        'Noto Color Emoji';
+    --font-mono:
+        ui-monospace, 'Cascadia Code', 'JetBrains Mono', SFMono-Regular, Menlo,
+        Consolas, monospace;
+}
+
+/* Accent color of AutoDeploy: indigo. */
+@theme {
+    --color-brand-50: oklch(96.2% 0.018 272.314);
+    --color-brand-100: oklch(93% 0.034 272.788);
+    --color-brand-200: oklch(87% 0.065 274.039);
+    --color-brand-300: oklch(78.5% 0.115 274.713);
+    --color-brand-400: oklch(67.3% 0.182 276.935);
+    --color-brand-500: oklch(58.5% 0.233 277.117);
+    --color-brand-600: oklch(51.1% 0.262 276.966);
+    --color-brand-700: oklch(45.7% 0.24 277.023);
+    --color-brand-800: oklch(39.8% 0.195 277.366);
+}
+
+/* Small set of shared building blocks, used by the Vue components (same as the ERP demo). */
+@layer components {
+    .card {
+        @apply rounded-xl border border-slate-200/80 bg-white shadow-xs;
+    }
+
+    .table-base {
+        @apply w-full text-left text-sm;
+    }
+
+    .table-base thead th {
+        @apply border-b border-slate-200 bg-slate-50/80 px-4 py-3 text-xs font-semibold tracking-wide whitespace-nowrap text-slate-500 uppercase;
+    }
+
+    .table-base tbody td {
+        @apply border-b border-slate-100 px-4 py-3 align-middle text-slate-700;
+    }
+
+    .table-base tbody tr {
+        @apply transition-colors hover:bg-slate-50/70;
+    }
+
+    .form-label {
+        @apply mb-1.5 block text-sm font-medium text-slate-700;
+    }
+
+    .form-control {
+        @apply block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs transition outline-none placeholder:text-slate-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-slate-50;
+    }
+
+    .form-control-error {
+        @apply border-rose-400 focus:border-rose-500 focus:ring-rose-100;
+    }
+
+    .form-error {
+        @apply mt-1.5 text-xs font-medium text-rose-600;
+    }
+
+    .form-hint {
+        @apply mt-1.5 text-xs text-slate-500;
+    }
+
+    /* Monospace editor for scripts and .env files. */
+    .code-editor {
+        @apply block w-full resize-y rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 font-mono text-[13px] leading-relaxed text-slate-100 caret-brand-400 shadow-inner outline-none selection:bg-brand-500/40 placeholder:text-slate-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30;
+        tab-size: 4;
+    }
+
+    .code-inline {
+        @apply rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.85em] text-slate-700;
+    }
+}
