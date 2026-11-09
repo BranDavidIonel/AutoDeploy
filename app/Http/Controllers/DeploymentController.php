@@ -9,6 +9,7 @@ use App\Http\Resources\DeploymentResource;
 use App\Models\Deployment;
 use App\Models\Project;
 use App\Services\Deploy\DeploymentPlanner;
+use App\Services\Queue\QueueWorkerMonitor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -39,9 +40,20 @@ class DeploymentController extends Controller
         return to_route('deployments.show', $deployment);
     }
 
-    public function show(Deployment $deployment): Response
+    public function show(Deployment $deployment, QueueWorkerMonitor $worker): Response
     {
         $deployment->load(['steps', 'user', 'project.server']);
+
+        // The page reloads every 1.5 s while the deploy waits in the queue: if no worker runs
+        // (it stopped, or the one started for this deploy did not come up), start one.
+        $pending = $deployment->status === DeploymentStatus::Pending;
+
+        if ($pending) {
+            $worker->ensureRunning();
+        }
+
+        // A queued deploy that nobody picks up for a while: tell why (see QueueWorkerMonitor::status()).
+        $waiting = $pending && $deployment->created_at->lt(now()->subSeconds(10));
 
         return Inertia::render('deployments/Show', [
             'deployment' => DeploymentResource::make($deployment),
@@ -52,9 +64,8 @@ class DeploymentController extends Controller
             'previousLive' => fn () => $deployment->project->active_deployment_id && $deployment->project->active_deployment_id !== $deployment->id
                 ? $deployment->project->active_deployment_id
                 : null,
-            // A queued deploy that nobody picks up means the queue worker is not running.
-            'waitingForWorker' => $deployment->status === DeploymentStatus::Pending
-                && $deployment->created_at->lt(now()->subSeconds(8)),
+            'waitingForWorker' => $waiting,
+            'queueWorker' => fn () => $waiting ? $worker->status() : null,
         ]);
     }
 

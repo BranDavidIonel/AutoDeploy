@@ -43,6 +43,8 @@ class ProjectResource extends JsonResource
             'scheduler_enabled' => $this->scheduler_enabled,
             'active_release' => $this->active_release,
             'last_deployed_at' => $this->last_deployed_at?->toIso8601String(),
+            // No deploy worked yet: the pages remind that Quick setup comes first.
+            'first_deploy' => $this->active_release === null && $this->last_deployed_at === null,
             'notes' => $this->notes,
             'paths' => [
                 'current' => $this->currentPath(),

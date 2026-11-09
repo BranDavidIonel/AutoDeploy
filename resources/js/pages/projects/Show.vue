@@ -8,6 +8,13 @@
         current="deployments"
         :reload-only="['deployments', 'stats']"
     >
+        <!-- Never deployed yet: Quick setup comes first -->
+        <FirstDeployHint
+            v-if="project.first_deploy"
+            :project-id="project.id"
+            class="mb-6"
+        />
+
         <!-- Key figures -->
         <div class="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
@@ -272,6 +279,7 @@ import EmptyState from '@/components/general/EmptyState.vue';
 import PaginationLinks from '@/components/general/PaginationLinks.vue';
 import StatCard from '@/components/general/StatCard.vue';
 import StatusBadge from '@/components/general/StatusBadge.vue';
+import FirstDeployHint from '@/components/modules/projects/FirstDeployHint.vue';
 import ProjectShell from '@/components/modules/projects/ProjectShell.vue';
 import deployments from '@/routes/deployments';
 import projects from '@/routes/projects';
@@ -295,6 +303,7 @@ export default defineComponent({
         AppCard,
         ChevronRight,
         EmptyState,
+        FirstDeployHint,
         Head,
         Link,
         PaginationLinks,

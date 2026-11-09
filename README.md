@@ -105,8 +105,9 @@ git clone https://github.com/BranDavidIonel/AutoDeploy.git
 3. Log in with the admin email and password from `.env` (`AUTODEPLOY_ADMIN_EMAIL`,
    `AUTODEPLOY_ADMIN_PASSWORD`). With an empty password the setup creates a random one and prints it once.
 
-> If the queue worker is not running, deployments stay "Queued" and the app shows a yellow warning
-> with the command to start it.
+> No need to start the queue worker by hand (for example when Apache from XAMPP serves AutoDeploy): when
+> a deployment is queued and no worker runs, AutoDeploy starts one in the background, which stops once the
+> queue is empty (output in `storage/logs/queue-worker.log`, off with `AUTODEPLOY_AUTO_WORKER=false`).
 
 ### Manual (any system)
 
@@ -162,6 +163,8 @@ Besides the usual Laravel settings, these matter:
 | `AUTODEPLOY_COMMAND_TIMEOUT`     | `3600`                  | longest a command may run on the server                                                         |
 | `AUTODEPLOY_LOCAL_BUILD_TIMEOUT` | `1800`                  | longest a local `npm run build` may run                                                         |
 | `AUTODEPLOY_MAX_UPLOAD_MB`       | `200`                   | largest build archive you can upload (PHP's `upload_max_filesize` / `post_max_size` apply too)  |
+| `AUTODEPLOY_AUTO_WORKER`         | `true`                  | start a queue worker by itself when a deployment is queued and none runs                        |
+| `AUTODEPLOY_PHP_BINARY`          | empty                   | PHP command line binary for that worker; empty = auto-detect                                    |
 | `AUTODEPLOY_ADMIN_EMAIL`         | `admin@example.com`     | email of the admin account made by `php artisan db:seed`                                        |
 | `AUTODEPLOY_ADMIN_PASSWORD`      | empty                   | its password; empty = a random one is made and printed once. Keep it in `.env` only             |
 

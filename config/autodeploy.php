@@ -42,4 +42,18 @@ return [
     */
     'max_upload_mb' => (int) env('AUTODEPLOY_MAX_UPLOAD_MB', 200),
 
+    /*
+    | Start a queue worker in the background when a deployment is queued and no worker runs
+    | (for example when Apache serves AutoDeploy and nobody ran "php artisan queue:work").
+    | That worker stops by itself once the queue is empty. Turn it off where Supervisor
+    | keeps a worker running.
+    */
+    'auto_worker' => (bool) env('AUTODEPLOY_AUTO_WORKER', true),
+
+    /*
+    | PHP command line binary used to start that worker. Empty = auto-detect: the PHP that
+    | runs AutoDeploy, the php.exe next to the loaded php.ini (Apache on Windows), the PATH.
+    */
+    'php_binary' => env('AUTODEPLOY_PHP_BINARY'),
+
 ];

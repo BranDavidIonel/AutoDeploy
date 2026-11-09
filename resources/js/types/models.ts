@@ -92,6 +92,14 @@ export type StepStatus =
     | 'failed'
     | 'skipped';
 
+/** AutoDeploy's own queue worker (app/Services/Queue/QueueWorkerMonitor.php). */
+export type QueueWorkerStatus =
+    | 'running'
+    | 'starting'
+    | 'failed'
+    | 'off'
+    | 'stopped';
+
 export type DeploymentStep = {
     id: number;
     key: string;
@@ -173,6 +181,8 @@ export type Project = {
     scheduler_enabled: boolean;
     active_release: string | null;
     last_deployed_at: string | null;
+    /** Never deployed yet: the first deploy needs Quick setup first. */
+    first_deploy: boolean;
     notes: string | null;
     paths: {
         current: string;

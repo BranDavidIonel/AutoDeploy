@@ -35,8 +35,10 @@ app/
     ├── Servers/ServerInspector.php     test conexiune + info server + generare cheie SSH
     ├── Projects/ProjectSetup.php       quick setup (verificări + pregătire)
     ├── Projects/EnvironmentFile.php    citire / scriere shared/.env
+    ├── Queue/                  QueueWorkerMonitor (heartbeat-ul workerilor AutoDeploy, pornire automată),
+    │                           WorkerLauncher (php artisan queue:work în fundal, Windows și Linux)
     └── Workers/                SupervisorConfig, WorkerManager, SchedulerManager
-config/autodeploy.php          limbile, timeout-urile, shell-ul local, limita de upload
+config/autodeploy.php          limbile, timeout-urile, shell-ul local, limita de upload, workerul automat
 resources/js/
 ├── pages/                     o pagină Inertia per ecran (Dashboard, servers/*, projects/*, deployments/Show, ...)
 ├── layouts/                   AppLayout (bara de sus, toasts, fereastra de output), AuthLayout (login)
@@ -84,6 +86,16 @@ erDiagram
    `rollback()` și `redeploy()`.
 2. **`RunDeployment`** (job, `tries = 1`, `timeout = 3600`) apelează `DeploymentRunner`; dacă workerul
    moare, `failed()` marchează deploy-ul ca eșuat ca să nu rămână „running" la nesfârșit.
+   **`QueueWorkerMonitor`** ascultă evenimentele cozii (înregistrate în `AppServiceProvider`): la
+   `JobQueued`, dacă nu există heartbeat în cache și conexiunea nu e `sync`, pornește un worker prin
+   **`WorkerLauncher`** (`Cache::add` pe o cheie de pornire = un singur worker, chiar dacă două cereri
+   vin deodată). Workerii scriu heartbeat-ul la `WorkerStarting` / `Looping` (cel mult la 5 s, valabil
+   15 s), îl țin cât durează jobul la `JobProcessing` și îl șterg la `WorkerStopping`; dacă un worker
+   oprit pentru coadă goală vede între timp un job nou, pornește altul. Pe Windows `WorkerLauncher`
+   rulează `start "" /B php artisan queue:work ...` prin `cmd.exe` (fără fereastră, neatașat de cerere;
+   log-ul îl deschide PHP, pentru că `>>` din `cmd.exe` ar ține fișierul blocat), pe Linux / macOS
+   `nohup ... >> storage/logs/queue-worker.log 2>&1 &`. `DeploymentController::show()` reîncearcă
+   pornirea cât deploy-ul stă în coadă, iar `status()` spune paginii de ce așteaptă.
 3. **`DeploymentRunner`** ia pașii pe rând. Pentru fiecare pas construiește scriptul bash cu
    **`DeployScripts`** și îl rulează prin `Connection::run()`; output-ul vine bucată cu bucată în
    **`StepOutput`**, care îl salvează în DB de ~2 ori pe secundă și verifică la 2 s dacă userul a cerut

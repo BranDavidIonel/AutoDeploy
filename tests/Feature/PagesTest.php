@@ -3,6 +3,7 @@
 use App\Enums\DeploymentStatus;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\Deploy\DeploymentPlanner;
 
 beforeEach(function () {
     fakeServer();
@@ -76,4 +77,18 @@ it('saves the .env on the server', function () {
         ->assertRedirect();
 
     expect($server->files[$this->project->sharedPath().'/.env'])->toBe("APP_ENV=production\nAPP_DEBUG=false\n");
+});
+
+it('reminds to run Quick setup until the first deploy works', function () {
+    $project = Project::factory()->create();
+    $project->deployments()->create(['status' => DeploymentStatus::Failed, 'type' => 'deploy']);
+
+    $this->get(route('projects.show', $project))
+        ->assertInertia(fn ($page) => $page->where('project.first_deploy', true));
+
+    // The queue is "sync" in tests: the deploy runs right away on the fake server.
+    app(DeploymentPlanner::class)->deploy($project);
+
+    $this->get(route('projects.show', $project))
+        ->assertInertia(fn ($page) => $page->where('project.first_deploy', false));
 });

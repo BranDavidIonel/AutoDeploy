@@ -105,8 +105,10 @@ git clone https://github.com/BranDavidIonel/AutoDeploy.git
    `AUTODEPLOY_ADMIN_PASSWORD`). Dacă parola e goală, setup-ul creează una aleatoare și o afișează o
    singură dată.
 
-> Dacă workerul de coadă nu rulează, deploy-urile rămân „În coadă" și aplicația afișează un
-> avertisment galben cu comanda de pornire.
+> Workerul de coadă nu trebuie pornit de mână (de exemplu când AutoDeploy e servit de Apache din XAMPP):
+> când un deploy intră în coadă și nu rulează niciun worker, AutoDeploy pornește singur unul în fundal,
+> care se oprește când coada e goală (output în `storage/logs/queue-worker.log`, se oprește cu
+> `AUTODEPLOY_AUTO_WORKER=false`).
 
 ### Manual (orice sistem)
 
@@ -162,6 +164,8 @@ Pe lângă setările obișnuite Laravel, contează:
 | `AUTODEPLOY_COMMAND_TIMEOUT`     | `3600`                  | durata maximă a unei comenzi pe server                                                                              |
 | `AUTODEPLOY_LOCAL_BUILD_TIMEOUT` | `1800`                  | durata maximă a unui `npm run build` local                                                                          |
 | `AUTODEPLOY_MAX_UPLOAD_MB`       | `200`                   | mărimea maximă a unei arhive de build urcate (contează și `upload_max_filesize` / `post_max_size` din `php.ini`)    |
+| `AUTODEPLOY_AUTO_WORKER`         | `true`                  | pornește singur un worker de coadă când un deploy intră în coadă și nu rulează niciunul                             |
+| `AUTODEPLOY_PHP_BINARY`          | gol                     | PHP-ul de linie de comandă pentru acel worker; gol = detectat automat                                               |
 | `AUTODEPLOY_ADMIN_EMAIL`         | `admin@example.com`     | emailul contului de admin creat de `php artisan db:seed`                                                            |
 | `AUTODEPLOY_ADMIN_PASSWORD`      | gol                     | parola lui; gol = se generează una aleatoare, afișată o singură dată. Ține-o doar în `.env`                         |
 

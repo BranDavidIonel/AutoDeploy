@@ -73,8 +73,12 @@ Butonul **Deploy** (sus, pe orice tab al proiectului) deschide opțiunile:
 - pentru build salvat: care arhivă;
 - branch-ul și o notă opțională.
 
+Până la primul deploy reușit, pagina proiectului și fereastra Deploy amintesc: „Primul deploy: rulează mai
+întâi Quick setup" (fără el, pasul „Prepare server" se oprește, pentru că lipsește `shared/.env`).
+
 Pagina deploy-ului arată pașii cu log live, durata, commit-ul. Poți anula (după comanda curentă) sau,
-dacă workerul nu mai răspunde, „Oprește forțat".
+dacă workerul nu mai răspunde, „Oprește forțat". Workerul de coadă pornește singur dacă nu rulează deja;
+dacă deploy-ul stă în coadă, pagina spune de ce.
 
 După primul deploy reușit, schimbă serverul web să servească `current/public`. AutoDeploy detectează
 dacă serverul folosește Apache sau Nginx și arată configurația potrivită pe pagina Quick setup.

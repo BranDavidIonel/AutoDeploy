@@ -1,9 +1,21 @@
 # 06 – Probleme frecvente
 
 **Deploy-ul stă „În coadă" și nu pornește.**
-Workerul de coadă nu rulează. Pornește AutoDeploy cu `start-autodeploy.bat` (pornește și workerul) sau
-rulează `php artisan queue:work --timeout=3600` în folderul AutoDeploy. Dacă un deploy a rămas blocat,
-apasă de două ori „Anulează" (a doua oară = oprire forțată).
+Când un deploy intră în coadă și nu rulează niciun worker, AutoDeploy pornește singur unul în fundal
+(dacă `AUTODEPLOY_AUTO_WORKER` nu e `false`). După ~10 secunde, pagina deploy-ului spune ce se întâmplă:
+
+- „Se pornește workerul de coadă…" – a fost pornit acum, deploy-ul începe în câteva secunde;
+- „Un worker de coadă rulează, dar nu a preluat încă acest deploy" – e ocupat cu alt deploy, așteaptă;
+- „Workerul de coadă nu a pornit" – vezi `storage/logs/queue-worker.log` (output-ul workerului: erori
+  PHP, extensii lipsă, versiune de PHP greșită) și `storage/logs/laravel*.log` (liniile „AutoDeploy could
+  not start a queue worker", de ex. când PHP-ul de linie de comandă nu e găsit). Setează PHP-ul corect în
+  `.env`: `AUTODEPLOY_PHP_BINARY=C:\xampp\php\php.exe` (sau `/usr/bin/php8.4` pe Linux). `proc_open` nu
+  trebuie să fie în `disable_functions` din `php.ini`. AutoDeploy încearcă din nou după un minut;
+- pornirea automată e oprită – pornește tu workerul.
+
+Oricând poți porni workerul de mână: `start-autodeploy.bat` (pornește și workerul) sau
+`php artisan queue:work --timeout=3600` în folderul AutoDeploy. Dacă un deploy a rămas blocat, apasă de
+două ori „Anulează" (a doua oară = oprire forțată).
 
 **„Login refused for root@…" / „Key file not found".**
 Calea cheii e pe calculatorul care rulează AutoDeploy (ex. `~/.ssh/id_ed25519` sau
@@ -31,6 +43,7 @@ acces), apare doar un avertisment și deploy-ul continuă.
 
 **„Missing …/shared/.env".**
 Primul deploy are nevoie de `.env`: Quick setup cu import din folderul vechi sau tab-ul Environment.
+Până la primul deploy reușit, pagina proiectului și fereastra Deploy afișează această amintire.
 
 **„… exists and is a normal folder, not a link".**
 În Deploy folder există deja un `current` care e folder normal. Mută-l (e probabil o copie veche a

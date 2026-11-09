@@ -11,6 +11,12 @@
         @close="$emit('close')"
     >
         <form id="deploy-form" class="space-y-6" @submit.prevent="submit">
+            <!-- Never deployed yet: Quick setup comes first -->
+            <FirstDeployHint
+                v-if="project.first_deploy"
+                :project-id="project.id"
+            />
+
             <!-- Build source -->
             <div>
                 <span class="form-label">{{
@@ -207,6 +213,7 @@ import { defineComponent, markRaw } from 'vue';
 import AppButton from '@/components/buttons/AppButton.vue';
 import TextInput from '@/components/inputs/TextInput.vue';
 import AppModal from '@/components/modals/AppModal.vue';
+import FirstDeployHint from '@/components/modules/projects/FirstDeployHint.vue';
 import projects from '@/routes/projects';
 import type { Build, BuildStrategy, Card, Project } from '@/types';
 import { formatBytes, formatMegabytes, timeAgo } from '@/utils/format';
@@ -222,7 +229,14 @@ const ICONS: Record<string, Component> = {
 export default defineComponent({
     name: 'DeployModal',
 
-    components: { AppButton, AppModal, Link, TextInput, TriangleAlert },
+    components: {
+        AppButton,
+        AppModal,
+        FirstDeployHint,
+        Link,
+        TextInput,
+        TriangleAlert,
+    },
 
     props: {
         show: { type: Boolean, default: false },

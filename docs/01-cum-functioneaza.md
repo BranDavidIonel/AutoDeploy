@@ -104,8 +104,15 @@ Reguli importante:
       deploy-ul continuă; dacă commit-ul chiar lipsește, pasul „Clone" de pe server eșuează, iar site-ul
       rămâne neatins.
 4. **Un singur deploy pe proiect odată.** Al doilea e refuzat cât primul rulează.
-5. **Deploy-urile rulează în fundal** (coada Laravel). De aceea `start-autodeploy.bat` pornește și
-   un `queue:work`. Pagina deploy-ului se actualizează singură la 1,5 secunde (log live).
+5. **Deploy-urile rulează în fundal** (coada Laravel), într-un `queue:work`. Nu trebuie pornit de mână:
+   când un deploy intră în coadă și nu rulează niciun worker, AutoDeploy pornește singur unul în fundal
+   (`php artisan queue:work database --stop-when-empty --timeout=3600 --tries=1 --sleep=1`, fără
+   fereastră), care se oprește când coada e goală. Merge și când AutoDeploy e servit de Apache (XAMPP).
+   Fiecare worker scrie în cache un „heartbeat" (la câteva secunde, iar cât rulează un deploy, pe toată
+   durata lui), așa că un worker pornit de `start-autodeploy.bat` sau de Supervisor e recunoscut și nu
+   se mai pornește altul lângă el. Output-ul workerului pornit automat e în
+   `storage/logs/queue-worker.log`; pornirea automată se oprește cu `AUTODEPLOY_AUTO_WORKER=false`.
+   Pagina deploy-ului se actualizează singură la 1,5 secunde (log live).
 6. **Permisiunile lui `storage`**: comenzile custom rulează ca userul SSH (de multe ori `root`). Dacă
    proiectul are un „User web" (ex. `www-data`), `storage/` și `bootstrap/cache` îi sunt date la
    activare și, dacă există comenzi „după live", din nou după ele (pasul „Fix storage permissions"):
@@ -138,7 +145,8 @@ bazei de date într-un mod incompatibil cu codul vechi, trebuie rezolvat manual.
 ## Unde rulează AutoDeploy
 
 - **Pe PC-ul tău (Windows)** – varianta recomandată acum: are acces la folderele proiectelor tale
-  pentru build local și la cheia ta SSH. Se pornește cu `start-autodeploy.bat`.
+  pentru build local și la cheia ta SSH. Se pornește cu `start-autodeploy.bat` sau e servit de Apache-ul
+  din XAMPP (workerul de coadă pornește singur, vezi mai sus).
 - **Pe server (Linux)** – după upgrade-ul de RAM, poți instala AutoDeploy și pe server; atunci un
   server de tip „Acest calculator" rulează comenzile direct, fără SSH, iar webhook-ul GitHub
   (deploy la `git push`) devine util, pentru că serverul e accesibil din internet.

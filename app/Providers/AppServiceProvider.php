@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Queue\QueueWorkerMonitor;
 use App\Services\Remote\ConnectionFactory;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -9,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -22,6 +24,9 @@ class AppServiceProvider extends ServiceProvider
     {
         // One factory per app: tests replace the connections with ConnectionFactory::fake().
         $this->app->singleton(ConnectionFactory::class);
+
+        // One per process: a worker remembers when it last wrote its heartbeat.
+        $this->app->singleton(QueueWorkerMonitor::class);
     }
 
     /**
@@ -32,6 +37,11 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
 
         JsonResource::withoutWrapping();
+
+        // Queue worker heartbeats, and a worker started by itself when a job is queued and none runs.
+        foreach (QueueWorkerMonitor::LISTENERS as $event => $method) {
+            Event::listen($event, [QueueWorkerMonitor::class, $method]);
+        }
 
         RateLimiter::for('login', fn (Request $request) => Limit::perMinute(5)->by(strtolower((string) $request->input('email')).'|'.$request->ip()));
     }

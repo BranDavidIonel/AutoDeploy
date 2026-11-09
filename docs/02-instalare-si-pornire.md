@@ -53,8 +53,27 @@ Autentificare cu emailul și parola de admin din `.env` (`AUTODEPLOY_ADMIN_EMAIL
 create de `DatabaseSeeder`; fără parolă în `.env` se generează una și se afișează o dată). Parola se poate
 schimba din „Contul meu".
 
-Dacă workerul nu rulează, deploy-urile rămân „În coadă" și aplicația afișează un avertisment galben
-cu comanda de pornire.
+### Cu Apache (XAMPP), fără `start-autodeploy.bat`
+
+AutoDeploy poate fi servit și de Apache-ul din XAMPP (un `VirtualHost` cu `DocumentRoot` pe folderul
+`public/` al lui AutoDeploy). Nu mai trebuie pornit niciun worker de mână: când un deploy intră în coadă
+și nu rulează niciun worker, AutoDeploy pornește singur unul în fundal, fără fereastră:
+
+```text
+php artisan queue:work database --stop-when-empty --timeout=3600 --tries=1 --sleep=1
+```
+
+- workerul se oprește singur când coada e goală; la următorul deploy pornește altul;
+- output-ul lui (joburile rulate, erorile) e în `storage/logs/queue-worker.log`;
+- PHP-ul de linie de comandă e găsit automat (sub Apache: `php.exe` din folderul lui `php.ini`, de ex.
+  `C:\xampp\php\php.exe`, apoi `PATH`); dacă nu e găsit, setează `AUTODEPLOY_PHP_BINARY` în `.env`;
+- un worker care rulează deja (din `start-autodeploy.bat`, din terminal sau din Supervisor) e recunoscut
+  după „heartbeat"-ul scris în cache, deci nu se pornește un al doilea lângă el;
+- pornirea automată se oprește cu `AUTODEPLOY_AUTO_WORKER=false` în `.env` (atunci pornești tu workerul).
+
+Dacă workerul nu pornește (sau pornirea automată e oprită), deploy-ul rămâne „În coadă", iar pagina lui
+spune după câteva secunde de ce și afișează comanda de pornire manuală (vezi și
+[06 – Probleme frecvente](06-probleme-frecvente.md)).
 
 Pentru dezvoltare (cu hot reload):
 
@@ -64,18 +83,22 @@ composer dev
 
 `composer dev` rulează `php artisan dev` (server, coadă, Vite, loguri). Pe Windows poți folosi și
 separat: `php artisan serve --port=8077`, `php artisan queue:work --timeout=3600`, `npm run dev`.
+Coada din `composer dev` (`queue:listen`) nu scrie heartbeat, deci AutoDeploy poate porni încă un worker
+lângă ea; nu strică nimic (un job e luat o singură dată), dar îl poți evita cu `AUTODEPLOY_AUTO_WORKER=false`.
 
 ## Variabile `.env` specifice
 
-| Variabilă                        | Implicit | Ce face                                                                                                          |
-| -------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| `APP_LOCALE`                     | `en`     | limba implicită a interfeței; fiecare utilizator o poate schimba din bara de sus (EN / RO)                       |
-| `DB_QUEUE_RETRY_AFTER`           | `4000`   | **obligatoriu mai mare decât durata unui deploy** (secunde); altfel coada poate porni același deploy de două ori |
-| `AUTODEPLOY_LOCAL_SHELL`         | gol      | bash-ul pentru servere „Acest calculator"; gol = `/bin/bash` pe Linux, Git Bash pe Windows                       |
-| `AUTODEPLOY_CONNECT_TIMEOUT`     | `20`     | secunde de așteptare la conectarea SSH                                                                           |
-| `AUTODEPLOY_COMMAND_TIMEOUT`     | `3600`   | durata maximă a unei comenzi pe server                                                                           |
-| `AUTODEPLOY_LOCAL_BUILD_TIMEOUT` | `1800`   | durata maximă a unui `npm run build` local                                                                       |
-| `AUTODEPLOY_MAX_UPLOAD_MB`       | `200`    | mărimea maximă a unei arhive de build urcate din browser                                                         |
+| Variabilă                        | Implicit | Ce face                                                                                                           |
+| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `APP_LOCALE`                     | `en`     | limba implicită a interfeței; fiecare utilizator o poate schimba din bara de sus (EN / RO)                        |
+| `DB_QUEUE_RETRY_AFTER`           | `4000`   | **obligatoriu mai mare decât durata unui deploy** (secunde); altfel coada poate porni același deploy de două ori  |
+| `AUTODEPLOY_LOCAL_SHELL`         | gol      | bash-ul pentru servere „Acest calculator"; gol = `/bin/bash` pe Linux, Git Bash pe Windows                        |
+| `AUTODEPLOY_CONNECT_TIMEOUT`     | `20`     | secunde de așteptare la conectarea SSH                                                                            |
+| `AUTODEPLOY_COMMAND_TIMEOUT`     | `3600`   | durata maximă a unei comenzi pe server                                                                            |
+| `AUTODEPLOY_LOCAL_BUILD_TIMEOUT` | `1800`   | durata maximă a unui `npm run build` local                                                                        |
+| `AUTODEPLOY_MAX_UPLOAD_MB`       | `200`    | mărimea maximă a unei arhive de build urcate din browser                                                          |
+| `AUTODEPLOY_AUTO_WORKER`         | `true`   | pornește singur un worker de coadă când un deploy intră în coadă și nu rulează niciunul; `false` = îl pornești tu |
+| `AUTODEPLOY_PHP_BINARY`          | gol      | PHP-ul de linie de comandă pentru acel worker; gol = detectat automat                                             |
 
 Secretele serverelor (chei private lipite în aplicație, parole, passphrase) se salvează **criptate cu
 `APP_KEY`**. Dacă schimbi `APP_KEY`, trebuie reintroduse.
@@ -96,7 +119,8 @@ Apoi:
 
 - Nginx cu `root /var/www/autodeploy/public` (ideal în spatele unei autentificări / doar pe VPN —
   AutoDeploy poate rula comenzi ca root pe server);
-- un worker Supervisor pentru coadă:
+- un worker Supervisor pentru coadă (și `AUTODEPLOY_AUTO_WORKER=false` în `.env`: Supervisor îl ține
+  pornit, AutoDeploy nu trebuie să mai pornească altul):
 
 ```ini
 [program:autodeploy-queue]

@@ -66,23 +66,25 @@
         </div>
     </div>
 
-    <!-- Waiting for the queue worker -->
+    <!-- Waiting for the queue worker (QueueWorkerMonitor::status() says why) -->
     <div
         v-if="waitingForWorker && deployment.status === 'pending'"
         class="mb-6 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
     >
-        <TriangleAlert class="mt-0.5 size-5 shrink-0 text-amber-600" />
+        <LoaderCircle
+            v-if="queueWorker === 'starting'"
+            class="mt-0.5 size-5 shrink-0 animate-spin text-amber-600"
+        />
+        <TriangleAlert v-else class="mt-0.5 size-5 shrink-0 text-amber-600" />
         <div>
             <p class="font-semibold">
-                {{ $t('Waiting for the queue worker') }}
+                {{ workerNotice.title }}
             </p>
             <p class="mt-0.5 text-amber-800">
-                {{
-                    $t(
-                        'Deployments run in the background. Start the worker in a terminal in the AutoDeploy folder:',
-                    )
-                }}
-                <code class="code-inline bg-amber-100"
+                {{ workerNotice.text }}
+                <code
+                    v-if="workerNotice.manual"
+                    class="code-inline bg-amber-100"
                     >php artisan queue:work --timeout=3600</code
                 >
             </p>
@@ -356,7 +358,12 @@ import LogOutput from '@/components/general/LogOutput.vue';
 import StatusBadge from '@/components/general/StatusBadge.vue';
 import deployments from '@/routes/deployments';
 import projects from '@/routes/projects';
-import type { Deployment, DeploymentStep, StepStatus } from '@/types';
+import type {
+    Deployment,
+    DeploymentStep,
+    QueueWorkerStatus,
+    StepStatus,
+} from '@/types';
 import { formatDateTime, formatDuration } from '@/utils/format';
 
 /** One deployment: summary and the steps with their live log (reloads every 1.5 s while running). */
@@ -391,6 +398,11 @@ export default defineComponent({
             required: true,
         },
         waitingForWorker: { type: Boolean, default: false },
+        /** Sent while the deployment waits: running, starting, failed, off or stopped. */
+        queueWorker: {
+            type: String as PropType<QueueWorkerStatus | null>,
+            default: null,
+        },
     },
 
     data() {
@@ -410,6 +422,52 @@ export default defineComponent({
     },
 
     computed: {
+        /** Why the deployment still waits in the queue, and whether to show the manual command. */
+        workerNotice(): { title: string; text: string; manual: boolean } {
+            switch (this.queueWorker) {
+                case 'starting':
+                    return {
+                        title: this.$t('Starting the queue worker…'),
+                        text: this.$t(
+                            'No worker was running, so AutoDeploy started one in the background. The deployment begins in a few seconds.',
+                        ),
+                        manual: false,
+                    };
+                case 'running':
+                    return {
+                        title: this.$t('Waiting for the queue worker'),
+                        text: this.$t(
+                            'A queue worker is running but has not picked up this deployment yet. It may be busy with another deployment.',
+                        ),
+                        manual: false,
+                    };
+                case 'failed':
+                    return {
+                        title: this.$t('The queue worker did not start'),
+                        text: this.$t(
+                            'AutoDeploy tried to start it in the background (see storage/logs/queue-worker.log). Start it in a terminal in the AutoDeploy folder:',
+                        ),
+                        manual: true,
+                    };
+                case 'off':
+                    return {
+                        title: this.$t('Waiting for the queue worker'),
+                        text: this.$t(
+                            'The automatic start is off (AUTODEPLOY_AUTO_WORKER=false). Start the worker in a terminal in the AutoDeploy folder:',
+                        ),
+                        manual: true,
+                    };
+                default:
+                    return {
+                        title: this.$t('Waiting for the queue worker'),
+                        text: this.$t(
+                            'Deployments run in the background. Start the worker in a terminal in the AutoDeploy folder:',
+                        ),
+                        manual: true,
+                    };
+            }
+        },
+
         title(): string {
             return this.deployment.type === 'rollback'
                 ? this.$t('Rollback #:id', { id: this.deployment.id })
@@ -559,7 +617,12 @@ export default defineComponent({
 
             this.poller = setTimeout(() => {
                 router.reload({
-                    only: ['deployment', 'waitingForWorker', 'queueStuck'],
+                    only: [
+                        'deployment',
+                        'waitingForWorker',
+                        'queueWorker',
+                        'queueStuck',
+                    ],
                     preserveScroll: true,
                     onFinish: () => {
                         if (this.deployment.is_active) {

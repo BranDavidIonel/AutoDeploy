@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Enums\DeploymentStatus;
 use App\Models\Deployment;
+use App\Services\Queue\QueueWorkerMonitor;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -45,10 +46,10 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => fn () => $request->user()?->only(['id', 'name', 'email']),
             ],
-            // Deployments waiting in the queue for a while = the queue worker is not running.
+            // Deployments waiting in the queue for a while, and no worker runs or is starting.
             'queueStuck' => fn () => $request->user()
-                ? Deployment::where('status', DeploymentStatus::Pending)->where('created_at', '<', now()->subSeconds(15))->exists()
-                : false,
+                && Deployment::where('status', DeploymentStatus::Pending)->where('created_at', '<', now()->subSeconds(15))->exists()
+                && ! in_array(app(QueueWorkerMonitor::class)->status(), ['running', 'starting'], true),
         ];
     }
 }
