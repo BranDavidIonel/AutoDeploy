@@ -112,6 +112,7 @@ class DeploymentRunner
             $step->key === 'server_build' => $this->exec($this->scripts->serverBuild()),
             $step->key === 'upload_build' => $this->uploadBuild(),
             $step->key === 'activate' => $this->activate(),
+            $step->key === 'permissions' => $this->exec($this->scripts->permissions()),
             $step->key === 'check_release' => $this->exec($this->scripts->checkRelease()),
             $step->key === 'cleanup' => $this->cleanup(),
             $step->key === 'health' => $this->healthCheck(),
@@ -125,7 +126,7 @@ class DeploymentRunner
 
     private function localBuild(): void
     {
-        $result = $this->localBuilder->build($this->project, $this->output(), $this->deployment->user_id);
+        $result = $this->localBuilder->build($this->project, $this->output(), $this->deployment->user_id, $this->deployment->branch);
 
         $this->archive = $result['build']->absolutePath();
 

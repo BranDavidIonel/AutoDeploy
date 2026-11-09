@@ -18,6 +18,17 @@ serverului apasă „Uită cheia serverului". Altfel nu continua.
 Serverul nu poate citi repository-ul: creează cheia SSH a serverului (pagina serverului) și adaug-o în
 GitHub ca _Deploy key_; pentru build local, commit-ul trebuie să fie `git push`-uit.
 
+**„Deploy oprit: modificări necomise" (build local).**
+Folderul local al proiectului are fișiere modificate și necomise (lista e în log-ul pasului „Build
+assets locally"). Asset-urile ar fi construite din ele, dar serverul ia codul din ultimul commit, deci nu
+s-ar potrivi. Fă commit (și push) la modificări sau pune-le deoparte (`git stash`), apoi deployează din
+nou. Fișierele noi, neadăugate în git, nu opresc deploy-ul.
+
+**„Deploy oprit: commit-ul … nu e încă push-uit".**
+Commit-ul din folderul local nu există pe `origin/<branch>`, iar serverul îl ia din repository. Rulează
+`git push`, apoi deployează din nou. Dacă AutoDeploy nu poate contacta repository-ul (offline, fără
+acces), apare doar un avertisment și deploy-ul continuă.
+
 **„Missing …/shared/.env".**
 Primul deploy are nevoie de `.env`: Quick setup cu import din folderul vechi sau tab-ul Environment.
 
@@ -37,7 +48,8 @@ OPcache: comanda „Reload PHP-FPM" (după live) trebuie să fie activă. Ea gă
 
 **Erori de permisiuni în `storage/logs` după deploy.**
 Setează „User web" (`www-data`) în proiect: AutoDeploy schimbă proprietarul lui `shared/storage` și
-`bootstrap/cache` înainte și după activare (doar dacă se conectează ca root sau are `sudo`).
+`bootstrap/cache` la activare și din nou după comenzile „după live" (pasul „Fix storage permissions"),
+la deploy și la rollback (doar dacă se conectează ca root sau are `sudo`).
 
 **Upload-ul de build e refuzat ca prea mare.**
 Limita e `AUTODEPLOY_MAX_UPLOAD_MB` și limitele PHP (`upload_max_filesize`, `post_max_size`).

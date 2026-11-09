@@ -295,6 +295,7 @@ import {
     ShieldCheck,
     SquareTerminal,
     ToggleRight,
+    UserCheck,
 } from '@lucide/vue';
 import { Head, router } from '@inertiajs/vue3';
 import type { Component, PropType } from 'vue';
@@ -344,6 +345,7 @@ const ICONS = {
     build: markRaw(Hammer),
     activate: markRaw(ArrowRightLeft),
     cleanup: markRaw(Broom),
+    permissions: markRaw(UserCheck),
     health: markRaw(HeartPulse),
     stage: markRaw(SquareTerminal),
 };
@@ -436,6 +438,10 @@ export default defineComponent({
             };
             const hasShared =
                 p.shared_dirs.length > 0 || p.shared_files.length > 0;
+            // The hooks after going live run as the SSH user; the owner is fixed again after them.
+            const hasPermissionsStep =
+                !!p.web_user &&
+                this.hooksIn('after_activate').some((hook) => hook.enabled);
 
             const nodes: (PipelineNode | null)[] = [
                 {
@@ -508,6 +514,21 @@ export default defineComponent({
                     tone: 'live',
                 },
                 stage('after_activate'),
+                {
+                    type: 'system',
+                    key: 'permissions',
+                    name: this.$t('Fix storage permissions'),
+                    note: hasPermissionsStep
+                        ? this.$t(
+                              'Gives storage and bootstrap/cache back to :user after the commands above.',
+                              { user: p.web_user ?? '' },
+                          )
+                        : this.$t(
+                              'Only with a web user (Settings) and “After going live” commands.',
+                          ),
+                    icon: ICONS.permissions,
+                    muted: !hasPermissionsStep,
+                },
                 {
                     type: 'system',
                     key: 'cleanup',

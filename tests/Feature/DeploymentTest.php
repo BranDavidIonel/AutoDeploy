@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Deploy\DeploymentPlanner;
 use App\Services\Deploy\HookPresets;
 use App\Services\Remote\CommandResult;
+use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -130,4 +131,70 @@ it('runs custom commands of each stage with the deploy variables', function () {
         ->and($hookScript)->toContain("RELEASE_PATH='/var/www/")
         ->and($hookScript)->toContain('cd "$RELEASE_PATH"')
         ->and($hookScript)->toContain('set -e');
+});
+
+it('fixes the storage owner again after the after-live hooks of a deploy', function () {
+    $server = fakeServer();
+
+    app(DeploymentPlanner::class)->deploy($this->project, [], $this->user);
+
+    $deployment = Deployment::with('steps')->firstOrFail();
+    $keys = $deployment->steps->pluck('key')->all();
+    $hooks = $this->project->hooksFor(HookStage::AfterActivate)->map(fn ($hook) => 'hook:'.$hook->id)->all();
+
+    expect($hooks)->not->toBeEmpty()
+        ->and(array_slice($keys, (int) array_search('activate', $keys, true)))->toBe(['activate', ...$hooks, 'permissions', 'cleanup'])
+        ->and($deployment->status)->toBe(DeploymentStatus::Finished)
+        ->and($deployment->steps->firstWhere('key', 'permissions')->name)->toBe('Fix storage permissions')
+        ->and(__('Fix storage permissions', [], 'ro'))->toBe('Repară permisiunile pentru storage');
+
+    // The owner is given back after queue:restart, which may have created root-owned cache files.
+    $restart = collect($server->scripts)->search(fn ($script) => str_contains($script, 'artisan queue:restart'));
+    $chown = collect($server->scripts)->keys()->last(fn ($i) => str_contains($server->scripts[$i], '$CHOWN -R "$WEB_USER"'));
+
+    expect($restart)->toBeInt()
+        ->and($chown)->toBeGreaterThan($restart);
+});
+
+it('fixes the storage owner again after the after-live hooks of a rollback', function () {
+    fakeServer();
+    Http::fake(['*' => Http::response('ok')]);
+    $this->project->update(['health_check_url' => 'https://example.com/up']);
+    $target = $this->project->deployments()->create([
+        'type' => 'deploy',
+        'status' => DeploymentStatus::Finished,
+        'release' => '20260101000000',
+        'release_exists' => true,
+    ]);
+
+    $rollback = app(DeploymentPlanner::class)->rollback($this->project->fresh(), $target, $this->user)->fresh('steps');
+    $hooks = $this->project->hooksFor(HookStage::AfterActivate)->map(fn ($hook) => 'hook:'.$hook->id)->all();
+
+    expect($rollback->status)->toBe(DeploymentStatus::Finished)
+        ->and($rollback->steps->pluck('key')->all())->toBe(['check_release', 'activate', ...$hooks, 'permissions', 'health']);
+});
+
+it('adds no permissions step without a web user or without after-live hooks', function () {
+    fakeServer();
+    $planner = app(DeploymentPlanner::class);
+    $keys = fn () => array_column($planner->deploySteps($this->project->fresh(), BuildStrategy::Server), 0);
+
+    expect($keys())->toContain('permissions');
+
+    $this->project->update(['web_user' => null]);
+    expect($keys())->not->toContain('permissions');
+
+    $target = $this->project->deployments()->create([
+        'type' => 'deploy',
+        'status' => DeploymentStatus::Finished,
+        'release' => '20260101000000',
+        'release_exists' => true,
+    ]);
+    $rollback = $planner->rollback($this->project->fresh(), $target, $this->user)->fresh('steps');
+    expect($rollback->steps->pluck('key')->all())->not->toContain('permissions');
+
+    $this->project->update(['web_user' => 'www-data']);
+    $this->project->hooks()->where('stage', HookStage::AfterActivate)->update(['enabled' => false]);
+    expect($keys())->not->toContain('permissions')
+        ->and(array_slice($keys(), -2))->toBe(['activate', 'cleanup']);
 });

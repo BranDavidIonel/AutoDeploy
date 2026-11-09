@@ -240,7 +240,11 @@ class DeployScripts
         ]);
     }
 
-    /** Gives storage/ and bootstrap/cache to the web server user (php-fpm), when we can. */
+    /**
+     * Gives storage/ and bootstrap/cache to the web server user (php-fpm), when we can.
+     * Runs in the activate step, and again as its own step after the "after going live"
+     * hooks, which run as the SSH user and may create files php-fpm cannot write.
+     */
     public function permissions(): string
     {
         if (! $this->project->web_user) {
@@ -303,7 +307,6 @@ class DeployScripts
             'rm -f "$DEPLOY_PATH"/.autodeploy/build-*.tar.gz',
             'echo "Releases kept: $(ls -1 | sort -r | tr \'\n\' \' \')"',
             'echo "'.self::RELEASES_MARKER.' $(ls -1 | sort -r | tr \'\n\' \' \')"',
-            $this->permissions(),
         ]);
     }
 

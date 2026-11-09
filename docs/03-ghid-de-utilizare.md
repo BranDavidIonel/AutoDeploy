@@ -51,6 +51,11 @@ Tab-ul **Quick setup** al proiectului:
    apasă **Rulează quick setup**. Se creează structura, se copiază o singură dată `.env` și `storage/`
    (upload-urile, logurile) în `shared/`, se adaugă `github.com` în `known_hosts`, se verifică accesul
    la repository și se repară proprietarul lui `storage`.
+   `storage/` se importă întâi cu hard link-uri (`cp -al`): instant și fără spațiu în plus pe disc, chiar
+   cu multe upload-uri. Folderul vechi rămâne o copie completă: ștergerea sau înlocuirea unui fișier
+   într-o parte nu o atinge pe cealaltă (fișierele scrise pe loc, ca logurile, își împart conținutul până
+   sunt înlocuite). Dacă hard link-urile nu merg (de ex. alt sistem de fișiere), se face o copie
+   normală (`cp -a`). Importul se face doar dacă `shared/storage` nu există încă.
 3. Rezultatul apare într-o fereastră cu tot output-ul serverului.
 
 ## 4. Verifică `.env`
@@ -115,7 +120,8 @@ poți adăuga comenzile tale (Laravel, npm, bash):
 Fiecare comandă rulează cu `bash`, `set -e`, în folderul noului release. Variabile disponibile:
 `$PHP`, `$COMPOSER_BIN`, `$RELEASE_PATH`, `$SHARED_PATH`, `$CURRENT_PATH`, `$DEPLOY_PATH`,
 `$RELEASE`, `$BRANCH`, `$COMMIT`, `$WEB_USER`. O comandă care eșuează oprește deploy-ul (site-ul
-rămâne neatins dacă e înainte de activare). Comenzile se pot activa/dezactiva, reordona și adăuga din
+rămâne neatins dacă e înainte de activare). Comenzile rulează ca userul SSH; după cele „după live",
+`storage` și `bootstrap/cache` sunt date din nou userului web (pasul automat „Fix storage permissions"). Comenzile se pot activa/dezactiva, reordona și adăuga din
 presetări (migrate, seed, optimize, storage:link, queue:restart, Horizon, Filament, PHP-FPM…).
 
 ## 7. Build salvat (upload)

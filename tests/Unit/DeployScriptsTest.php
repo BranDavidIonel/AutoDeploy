@@ -68,6 +68,29 @@ it('keeps the newest releases and the live one', function () {
         ->toContain('if [ "$COUNT" -le 3 ] || [ "$R" = "$ACTIVE" ]; then continue; fi');
 });
 
+it('gives storage and bootstrap/cache to the web user', function () {
+    expect(scriptsFor()->permissions())->toBe(implode("\n", [
+        'if id "$WEB_USER" >/dev/null 2>&1; then',
+        '  if [ "$(id -u)" = "0" ]; then CHOWN="chown"; elif sudo -n true 2>/dev/null; then CHOWN="sudo -n chown"; else CHOWN=""; fi',
+        '  if [ -n "$CHOWN" ]; then',
+        '    for P in "$SHARED_PATH/storage" "$RELEASE_PATH/bootstrap/cache"; do',
+        '      if [ -e "$P" ]; then $CHOWN -R "$WEB_USER":"$WEB_USER" "$P/" || echo "WARNING: could not change the owner of $P"; fi',
+        '    done',
+        '    echo "storage and bootstrap/cache belong to $WEB_USER"',
+        '  else',
+        '    echo "Not root and no sudo: storage permissions left as they are."',
+        '  fi',
+        'else',
+        '  echo "User $WEB_USER does not exist on this server, permissions left as they are."',
+        'fi',
+    ]))
+        ->and(scriptsFor(['shared_dirs' => []])->permissions())->toContain('for P in "$RELEASE_PATH/storage" "$RELEASE_PATH/bootstrap/cache"; do')
+        ->and(scriptsFor(['web_user' => null])->permissions())->toBe('true')
+        // Before the switch; after the "after going live" hooks it runs as its own step.
+        ->and(scriptsFor()->activate())->toStartWith(scriptsFor()->permissions())
+        ->and(scriptsFor()->cleanup(3))->not->toContain('chown');
+});
+
 it('reads the commit and the releases from the step output', function () {
     expect(DeployScripts::parseCommit("x\n__AUTODEPLOY_COMMIT__\tabc1234\tAda\tFix it\n"))
         ->toBe(['hash' => 'abc1234', 'author' => 'Ada', 'message' => 'Fix it'])

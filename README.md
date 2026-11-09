@@ -27,7 +27,8 @@ you move the build to the server with one setting.
   `storage` are shared in `shared/`, and the switch to the new version is instant through the `current`
   link. If a step fails, the live site stays untouched on the previous version.
 - **3 ways to get the front-end assets**, chosen per project and at every deploy:
-    - **Build locally** – AutoDeploy runs `npm run build` in the project folder on your PC and uploads the result;
+    - **Build locally** – AutoDeploy runs `npm run build` in the project folder on your PC and uploads the result
+      (the folder must be committed and pushed: uncommitted changes or an unpushed commit stop the deploy);
     - **Saved build** – you upload a `.zip` of `public/build` made earlier; the newest N are kept;
     - **Build on the server** – `npm ci && npm run build` on the server (after a RAM upgrade).
 - **Rollback** in one click to any of the last N releases (3 by default).
@@ -211,7 +212,8 @@ The project gets the standard Laravel commands automatically (see step 7).
 The checklist shows what the server is missing (folders, `.env`, `APP_KEY`, repository access, web server,
 Supervisor, web user, Node), each with how to fix it. Fill in **"Import .env and storage from an existing
 folder"** with `/var/www/my-site` and press **Run quick setup**: it creates the structure, copies `.env` and
-`storage/` into `shared/` once, trusts the `github.com` host key and checks repository access.
+`storage/` into `shared/` once (`storage/` with hard links when possible: instant, no extra disk space), trusts
+the `github.com` host key and checks repository access.
 
 ### 4. Check `.env` (Environment tab)
 
@@ -278,7 +280,8 @@ setup page. The old folder stays as a backup.
 Commands run with `bash` and `set -e` in the new release folder. Available variables: `$PHP`,
 `$COMPOSER_BIN`, `$RELEASE_PATH`, `$SHARED_PATH`, `$CURRENT_PATH`, `$DEPLOY_PATH`, `$RELEASE`, `$BRANCH`,
 `$COMMIT`, `$WEB_USER`. A command that fails before the switch stops the deploy and the site stays on the
-previous version.
+previous version. Commands run as the SSH user; after the "After going live" ones, `storage/` and
+`bootstrap/cache` are given back to the web server user (automatic "Fix storage permissions" step).
 
 ### 8. Workers and scheduler (Workers tab)
 

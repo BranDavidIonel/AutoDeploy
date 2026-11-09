@@ -27,7 +27,8 @@ treci build-ul pe server dintr-o setare.
   `storage` comune în `shared/`, trecere instantanee pe versiunea nouă prin link-ul `current`. Dacă un
   pas eșuează, site-ul rămâne neatins pe versiunea veche.
 - **3 variante pentru asset-uri**, alese per proiect și la fiecare deploy:
-    - **Build local** – AutoDeploy rulează `npm run build` în folderul proiectului de pe PC și urcă rezultatul;
+    - **Build local** – AutoDeploy rulează `npm run build` în folderul proiectului de pe PC și urcă rezultatul
+      (folderul trebuie să fie commit-uit și push-uit: modificările necomise sau un commit ne-push-uit opresc deploy-ul);
     - **Build salvat** – urci un `.zip` cu `public/build` făcut deja; se păstrează ultimele N;
     - **Build pe server** – `npm ci && npm run build` pe server (după upgrade de RAM).
 - **Rollback** dintr-un click la oricare din ultimele N release-uri (implicit 3).
@@ -212,8 +213,9 @@ Proiectul primește automat comenzile Laravel standard (vezi pasul 6).
 Lista de verificări arată ce lipsește pe server (folderul, `.env`, `APP_KEY`, accesul la repository,
 Nginx, Supervisor, userul web, Node), fiecare cu explicația cum se repară. Completează **„Importă .env și
 storage dintr-un folder existent"** cu `/var/www/my-site` și apasă **Rulează quick setup**: se creează
-structura, se copiază o singură dată `.env` și `storage/` în `shared/`, se acceptă cheia `github.com` și se
-verifică accesul la repository.
+structura, se copiază o singură dată `.env` și `storage/` în `shared/` (`storage/` cu hard link-uri când se
+poate: instant, fără spațiu în plus pe disc), se acceptă cheia `github.com` și se verifică accesul la
+repository.
 
 ### 4. Verifică `.env` (tab-ul Environment)
 
@@ -278,7 +280,8 @@ Comanda „Reload PHP-FPM" din scriptul de deploy găsește singură serviciul (
 Comenzile rulează cu `bash` și `set -e` în folderul noului release. Variabile disponibile: `$PHP`,
 `$COMPOSER_BIN`, `$RELEASE_PATH`, `$SHARED_PATH`, `$CURRENT_PATH`, `$DEPLOY_PATH`, `$RELEASE`, `$BRANCH`,
 `$COMMIT`, `$WEB_USER`. O comandă care eșuează înainte de activare oprește deploy-ul, iar site-ul rămâne
-pe versiunea veche.
+pe versiunea veche. Comenzile rulează ca userul SSH; după cele „După live", `storage/` și `bootstrap/cache`
+sunt date din nou userului serverului web (pasul automat „Fix storage permissions").
 
 ### 8. Workeri și scheduler (tab-ul Workeri)
 

@@ -96,11 +96,11 @@ class DeploymentPlanner
                 'note' => __('Rollback to release :release (deployment #:id)', ['release' => $target->release, 'id' => $target->id]),
             ]);
 
-            $steps = [['check_release', 'Check release on the server'], ['activate', 'Activate release']];
-
-            foreach ($project->hooksFor(HookStage::AfterActivate) as $hook) {
-                $steps[] = ['hook:'.$hook->id, $hook->name, $hook->script];
-            }
+            $steps = [
+                ['check_release', 'Check release on the server'],
+                ['activate', 'Activate release'],
+                ...$this->afterActivateSteps($project),
+            ];
 
             if ($project->health_check_url) {
                 $steps[] = ['health', 'Health check'];
@@ -164,15 +164,33 @@ class DeploymentPlanner
         }
 
         $steps[] = ['activate', 'Activate release'];
+        array_push($steps, ...$this->afterActivateSteps($project));
+        $steps[] = ['cleanup', 'Clean up old releases'];
+
+        if ($project->health_check_url) {
+            $steps[] = ['health', 'Health check'];
+        }
+
+        return $steps;
+    }
+
+    /**
+     * The "after going live" hooks, then the storage owner fixed again: the hooks run as
+     * the SSH user (often root), so a command like queue:restart can leave root-owned
+     * cache files in storage/ that php-fpm cannot write.
+     *
+     * @return list<array{0: string, 1: string, 2?: string}>
+     */
+    private function afterActivateSteps(Project $project): array
+    {
+        $steps = [];
 
         foreach ($project->hooksFor(HookStage::AfterActivate) as $hook) {
             $steps[] = ['hook:'.$hook->id, $hook->name, $hook->script];
         }
 
-        $steps[] = ['cleanup', 'Clean up old releases'];
-
-        if ($project->health_check_url) {
-            $steps[] = ['health', 'Health check'];
+        if ($steps !== [] && $project->web_user) {
+            $steps[] = ['permissions', 'Fix storage permissions'];
         }
 
         return $steps;

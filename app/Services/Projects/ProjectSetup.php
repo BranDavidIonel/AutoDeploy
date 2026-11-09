@@ -109,7 +109,22 @@ class ProjectSetup
             $lines[] = 'if [ -f "$FROM/.env" ] && [ ! -s "$SHARED_PATH/.env" ]; then cp "$FROM/.env" "$SHARED_PATH/.env"; echo "✔ Copied $FROM/.env to shared/.env"; elif [ -s "$SHARED_PATH/.env" ]; then echo "• shared/.env already exists, left as it is"; else echo "• $FROM has no .env"; fi';
 
             if ($sharesStorage) {
-                $lines[] = 'if [ "$HAD_STORAGE" = "no" ] && [ -d "$FROM/storage" ]; then cp -a "$FROM/storage" "$SHARED_PATH/storage"; echo "✔ Copied $FROM/storage to shared/storage ($(du -sh "$SHARED_PATH/storage" | cut -f1))"; elif [ "$HAD_STORAGE" = "yes" ]; then echo "• shared/storage already exists, left as it is"; fi';
+                // Hard links first (cp -al): instant and no extra disk space, even with gigabytes of
+                // uploads. It is safe: the old folder stays a complete backup, and deleting or replacing
+                // a file on one side does not touch the other. Files written in place (logs that grow,
+                // file cache, sessions) share their data until one side replaces them, and the owner is
+                // shared too, so the chown at the end applies to both. When hard links are not possible
+                // (e.g. another filesystem), the partial folder made just now is removed and storage is
+                // copied instead.
+                $lines[] = 'if [ "$HAD_STORAGE" = "no" ] && [ -d "$FROM/storage" ]; then';
+                $lines[] = '  if cp -al "$FROM/storage" "$SHARED_PATH/storage" 2>/dev/null; then';
+                $lines[] = '    echo "✔ Linked $FROM/storage to shared/storage ($(du -sh "$SHARED_PATH/storage" | cut -f1), hard links, no extra disk space)"';
+                $lines[] = '  else';
+                $lines[] = '    rm -rf "$SHARED_PATH/storage"';
+                $lines[] = '    cp -a "$FROM/storage" "$SHARED_PATH/storage"';
+                $lines[] = '    echo "✔ Copied $FROM/storage to shared/storage ($(du -sh "$SHARED_PATH/storage" | cut -f1))"';
+                $lines[] = '  fi';
+                $lines[] = 'elif [ "$HAD_STORAGE" = "yes" ]; then echo "• shared/storage already exists, left as it is"; fi';
             }
         }
 

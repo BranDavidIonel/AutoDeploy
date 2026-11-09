@@ -64,7 +64,9 @@ proiectului îți dă configurația completă.
 ```mermaid
 flowchart TD
     A[Apeși Deploy] --> B{Varianta de build}
-    B -- Build local --> C[npm run build pe PC<br/>arhivă salvată în AutoDeploy]
+    B -- Build local --> V{Folderul local:<br/>totul e commit-uit și push-uit?}
+    V -- nu --> X[Deploy oprit<br/>serverul nu e atins]
+    V -- da --> C[npm run build pe PC<br/>arhivă salvată în AutoDeploy]
     B -- altă variantă --> D
     C --> D[Pregătire server<br/>verifică git, .env, RAM, disc]
     D --> E[Clone repository<br/>exact commit-ul dorit în releases/data-ora]
@@ -78,7 +80,8 @@ flowchart TD
     K --> L
     L --> M[Activare: current -> noul release<br/>o singură redenumire atomică]
     M --> N[Comenzi custom: după live<br/>queue:restart, reload PHP-FPM]
-    N --> O[Curățenie: păstrează ultimele N release-uri]
+    N --> Q[Permisiuni storage<br/>storage și bootstrap/cache date din nou userului web]
+    Q --> O[Curățenie: păstrează ultimele N release-uri]
     O --> P[Health check opțional]
 ```
 
@@ -91,10 +94,23 @@ Reguli importante:
    există moment în care site-ul să fie pe jumătate actualizat.
 3. **Build local = exact același commit**: AutoDeploy citește commit-ul din folderul local
    (`git rev-parse HEAD`) și pe server face checkout fix la acel commit. Codul și asset-urile se
-   potrivesc. De aceea commit-ul trebuie să fie _push_-uit înainte.
+   potrivesc. De aceea, înainte de build, AutoDeploy verifică folderul local:
+    - **modificări necomise** (fișiere urmărite de git) → deploy-ul se oprește și arată primele fișiere
+      modificate: asset-urile ar fi construite din ele, dar serverul ar primi codul din ultimul commit;
+    - **commit ne-_push_-uit** → după `git fetch origin <branch>`, dacă commit-ul nu e pe
+      `origin/<branch>` (branch-ul deploy-ului sau cel local), deploy-ul se oprește cu mesajul să faci
+      `git push`;
+    - dacă `git fetch` nu merge (offline, fără acces la repository), apare doar un avertisment și
+      deploy-ul continuă; dacă commit-ul chiar lipsește, pasul „Clone" de pe server eșuează, iar site-ul
+      rămâne neatins.
 4. **Un singur deploy pe proiect odată.** Al doilea e refuzat cât primul rulează.
 5. **Deploy-urile rulează în fundal** (coada Laravel). De aceea `start-autodeploy.bat` pornește și
    un `queue:work`. Pagina deploy-ului se actualizează singură la 1,5 secunde (log live).
+6. **Permisiunile lui `storage`**: comenzile custom rulează ca userul SSH (de multe ori `root`). Dacă
+   proiectul are un „User web" (ex. `www-data`), `storage/` și `bootstrap/cache` îi sunt date la
+   activare și, dacă există comenzi „după live", din nou după ele (pasul „Fix storage permissions"):
+   de exemplu `queue:restart` scrie în cache și poate crea foldere ale lui `root`, pe care PHP-FPM nu
+   le-ar mai putea scrie.
 
 ## Rollback
 
@@ -103,7 +119,8 @@ Pe tab-ul **Releases** vezi release-urile încă prezente pe server. „Revino l
 1. verificare că folderul există;
 2. `current` mutat pe acel release (instant);
 3. comenzile „după live" (queue:restart, reload PHP-FPM);
-4. health check, dacă e setat.
+4. permisiunile lui `storage` date din nou userului web (dacă e setat și există comenzi „după live");
+5. health check, dacă e setat.
 
 Atenție: rollback-ul **nu** anulează migrările de bază de date. Dacă un deploy a schimbat structura
 bazei de date într-un mod incompatibil cu codul vechi, trebuie rezolvat manual.

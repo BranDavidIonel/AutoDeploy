@@ -91,14 +91,21 @@ erDiagram
    `failed`, restul `skipped`, release-ul neactivat e șters, deploy-ul `failed` cu mesajul erorii.
 4. **`DeployScripts`** e singurul loc cu bash-ul pipeline-ului: `prepare`, `clone` (doar commit-ul dorit,
    `git fetch --depth 1`), `shared`, `composer`, `hook`, `serverBuild`, `extractBuild`, `permissions`,
-   `activate` (`ln -sfn` + `mv -Tf`), `cleanup`, `removeRelease`. `wrap()` adaugă preambulul comun:
+   `activate` (`ln -sfn` + `mv -Tf`), `cleanup`, `removeRelease`. `permissions` rulează în `activate` și
+   încă o dată ca pas separat (`permissions`) după comenzile „după live" (deploy și rollback), doar când
+   proiectul are `web_user` și cel puțin o astfel de comandă: ele rulează ca userul SSH și pot lăsa în
+   `storage` fișiere pe care PHP-FPM nu le poate scrie. `wrap()` adaugă preambulul comun:
    `exec 2>&1`, nvm, `PATH`, `COMPOSER_ALLOW_SUPERUSER`, `GIT_SSH_COMMAND` cu
    `StrictHostKeyChecking=accept-new`, variabilele exportate și `set -e`.
    Scripturile scriu linii-marker (`__AUTODEPLOY_COMMIT__`, `__AUTODEPLOY_RELEASES__`) pe care runner-ul
    le citește; interfața le ascunde din log.
-5. **`LocalBuilder`** (varianta „Build local") rulează comanda de build cu Symfony Process în folderul
-   local, citește commit-ul/branch-ul cu git și salvează folderul de output prin **`BuildStorage`**
+5. **`LocalBuilder`** (varianta „Build local") citește commit-ul/branch-ul cu git, rulează comanda de
+   build cu Symfony Process în folderul local și salvează folderul de output prin **`BuildStorage`**
    (arhivă `.tar.gz` cu `PharData`, păstrează ultimele N). La upload pe server: SFTP + `tar -xzf`.
+   Înainte de build oprește deploy-ul (`DeployException`) dacă `git status --porcelain
+   --untracked-files=no` arată modificări sau dacă, după `git fetch origin <branch>` (fără prompt:
+   `GIT_TERMINAL_PROMPT=0`, SSH cu `BatchMode=yes`), `git merge-base --is-ancestor` spune că commit-ul
+   nu e pe `origin/<branch>`. Dacă fetch-ul eșuează (offline), doar avertizează.
 
 > Variabila pentru Composer se numește `$COMPOSER_BIN`, nu `$COMPOSER`: Composer citește variabila de
 > mediu `COMPOSER` ca nume al fișierului `composer.json` (bug găsit la testarea end-to-end).
