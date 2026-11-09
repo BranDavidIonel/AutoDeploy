@@ -284,6 +284,7 @@ import {
     Broom,
     FolderOpen,
     GitBranch,
+    Globe,
     Hammer,
     HeartPulse,
     Laptop,
@@ -344,6 +345,7 @@ const ICONS = {
     composer: markRaw(Package),
     build: markRaw(Hammer),
     activate: markRaw(ArrowRightLeft),
+    webServer: markRaw(Globe),
     cleanup: markRaw(Broom),
     permissions: markRaw(UserCheck),
     health: markRaw(HeartPulse),
@@ -442,6 +444,8 @@ export default defineComponent({
             const hasPermissionsStep =
                 !!p.web_user &&
                 this.hooksIn('after_activate').some((hook) => hook.enabled);
+            // Same rule as DeploymentPlanner: the setting and a site URL.
+            const managesWebServer = p.manage_web_server && !!p.url;
 
             const nodes: (PipelineNode | null)[] = [
                 {
@@ -512,6 +516,21 @@ export default defineComponent({
                     ),
                     icon: ICONS.activate,
                     tone: 'live',
+                },
+                {
+                    type: 'system',
+                    key: 'web_server',
+                    name: this.$t('Point the web server to current'),
+                    note: managesWebServer
+                        ? this.$t(
+                              'Points the Apache / Nginx site of the site URL to :path (backup, config test, reload). Changes nothing once it serves current.',
+                              { path: p.paths.public },
+                          )
+                        : this.$t(
+                              'Off: turn it on in Settings to switch the Apache / Nginx site automatically.',
+                          ),
+                    icon: ICONS.webServer,
+                    muted: !managesWebServer,
                 },
                 stage('after_activate'),
                 {

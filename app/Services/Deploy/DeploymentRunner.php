@@ -112,6 +112,7 @@ class DeploymentRunner
             $step->key === 'server_build' => $this->exec($this->scripts->serverBuild()),
             $step->key === 'upload_build' => $this->uploadBuild(),
             $step->key === 'activate' => $this->activate(),
+            $step->key === 'web_server' => $this->exec($this->scripts->webServer()),
             $step->key === 'permissions' => $this->exec($this->scripts->permissions()),
             $step->key === 'check_release' => $this->exec($this->scripts->checkRelease()),
             $step->key === 'cleanup' => $this->cleanup(),

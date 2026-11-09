@@ -26,7 +26,8 @@ class ProjectRequest extends FormRequest
         return [
             'server_id' => ['required', 'integer', Rule::exists('servers', 'id')],
             'name' => ['required', 'string', 'max:100'],
-            'url' => ['nullable', 'url', 'max:255'],
+            // The host of the URL tells which Apache / Nginx site to point to current/public.
+            'url' => ['nullable', 'url', 'max:255', 'required_if_accepted:manage_web_server'],
             'repository' => ['required', 'string', 'max:255'],
             'branch' => ['required', 'string', 'max:100', 'regex:/^[A-Za-z0-9._\-\/]+$/'],
             'deploy_path' => ['required', 'string', 'max:255', 'starts_with:/', Rule::notIn(['/', '/var', '/var/www', '/root', '/home', '/etc', '/usr'])],
@@ -46,6 +47,7 @@ class ProjectRequest extends FormRequest
             'shared_files' => ['array', 'max:30'],
             'shared_files.*' => ['string', 'max:255', 'regex:'.self::RELATIVE_PATH],
             'web_user' => ['nullable', 'string', 'max:50', 'regex:/^[a-z_][a-z0-9_-]*$/'],
+            'manage_web_server' => ['boolean'],
             'health_check_url' => ['nullable', 'url', 'max:255'],
             'auto_deploy' => ['boolean'],
             'notes' => ['nullable', 'string', 'max:5000'],
@@ -56,6 +58,7 @@ class ProjectRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'url.required_if_accepted' => __('Set the site URL: AutoDeploy finds the Apache / Nginx site by its host name.'),
             'deploy_path.starts_with' => __('Use a full path on the server, e.g. /var/www/my-app.'),
             'deploy_path.not_in' => __('Use a folder of its own, e.g. /var/www/my-app.'),
             'build_output.regex' => __('Use a path inside the project, e.g. public/build.'),

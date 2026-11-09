@@ -37,6 +37,7 @@ treci build-ul pe server dintr-o setare.
 - **Log live** pentru fiecare pas, anulare, redeploy, health check, deploy la `git push` (webhook GitHub).
 - **Workeri de coadă (Supervisor)** și **scheduler (cron)** configurate dintr-un singur buton.
 - **Quick setup** al proiectului pe server: verificări + import `.env` și `storage` dintr-un site existent.
+- **Apache sau Nginx** – serverul web e detectat și configurația potrivită e afișată; opțional, fiecare deploy mută singur site-ul URL-ului proiectului pe `current/public` (backup, test de configurație, reload).
 - **Editor `.env`** direct pe server, informații despre server (RAM, disc, versiuni), cheie SSH pentru GitHub.
 - Interfață în **engleză și română** – limba se alege din bara de sus (implicit engleză).
 

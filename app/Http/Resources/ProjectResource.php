@@ -38,6 +38,7 @@ class ProjectResource extends JsonResource
             'shared_dirs' => $this->sharedDirs(),
             'shared_files' => $this->sharedFiles(),
             'web_user' => $this->web_user,
+            'manage_web_server' => $this->manage_web_server,
             'health_check_url' => $this->health_check_url,
             'auto_deploy' => $this->auto_deploy,
             'scheduler_enabled' => $this->scheduler_enabled,

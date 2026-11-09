@@ -232,6 +232,44 @@
                         </div>
                     </template>
 
+                    <!-- Who points the site to current/public: the deploys or you -->
+                    <p
+                        v-if="managesWebServer"
+                        class="mb-4 flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs leading-relaxed text-emerald-800 ring-1 ring-emerald-100"
+                    >
+                        <ShieldCheck class="mt-px size-4 shrink-0" />
+                        <span>
+                            {{
+                                $t(
+                                    '“Point the web server to current” is on: the first deploy points the Apache / Nginx site of :host to :path (backup of the old file, config test, reload). The config below is for reference.',
+                                    {
+                                        host: siteHost,
+                                        path: project.paths.public,
+                                    },
+                                )
+                            }}
+                        </span>
+                    </p>
+                    <p
+                        v-else
+                        class="text-brand-900 mb-4 flex items-start gap-2 rounded-lg bg-brand-50/70 px-3 py-2.5 text-xs leading-relaxed ring-1 ring-brand-100 ring-inset"
+                    >
+                        <Info class="mt-px size-4 shrink-0 text-brand-500" />
+                        <span>
+                            {{
+                                $t(
+                                    'After the first deploy the site must be served from :path: change it once with the config below, or turn on “Point the web server to current” in the settings and the deploys do it for you.',
+                                    { path: project.paths.public },
+                                )
+                            }}
+                            <Link
+                                :href="settingsUrl"
+                                class="font-medium whitespace-nowrap text-brand-600 hover:text-brand-700"
+                                >{{ $t('Settings') }} →</Link
+                            >
+                        </span>
+                    </p>
+
                     <!-- Apache -->
                     <template v-if="webServer === 'apache'">
                         <ul class="mb-4 space-y-2 text-sm text-slate-600">
@@ -555,6 +593,7 @@ import {
     ChevronRight,
     CircleCheck,
     ExternalLink,
+    Info,
     KeyRound,
     LoaderCircle,
     RefreshCw,
@@ -597,6 +636,7 @@ export default defineComponent({
         CopyButton,
         Deferred,
         Head,
+        Info,
         KeyRound,
         Link,
         LoaderCircle,
@@ -664,6 +704,23 @@ export default defineComponent({
             return projects.workers.index(this.project.id).url;
         },
 
+        settingsUrl(): string {
+            return projects.edit(this.project.id).url;
+        },
+
+        /** The deploys point the Apache / Nginx site to current/public (same rule as the planner). */
+        managesWebServer(): boolean {
+            return this.project.manage_web_server && !!this.project.url;
+        },
+
+        siteHost(): string {
+            try {
+                return new URL(this.project.url ?? '').hostname;
+            } catch {
+                return this.project.url ?? '';
+            }
+        },
+
         setupSteps(): string[] {
             return [
                 this.$t('Creates releases/ and shared/ in :path', {
@@ -688,8 +745,7 @@ export default defineComponent({
             link?: { label: string; href: string };
         }[] {
             const id = this.project.id;
-
-            return [
+            const start = [
                 {
                     text: this.$t(
                         'Run quick setup with “Import from” set to the folder of the site today (e.g. /var/www/my-site).',
@@ -702,6 +758,22 @@ export default defineComponent({
                         href: projects.environment.edit(id).url,
                     },
                 },
+            ];
+
+            if (this.managesWebServer) {
+                return [
+                    ...start,
+                    {
+                        text: this.$t(
+                            'Deploy: the first release goes live and AutoDeploy points the web server to :path. Its log lists every changed file and the backup folder.',
+                            { path: this.project.paths.public },
+                        ),
+                    },
+                ];
+            }
+
+            return [
+                ...start,
                 {
                     text: this.$t(
                         'Deploy: the first release is created and current points to it. The site still runs from the old folder.',

@@ -53,6 +53,34 @@ site-ului) sau alege alt Deploy folder.
 Lipsă de RAM. Folosește „Build local" sau „Build salvat"; după upgrade-ul de RAM poți reveni la „Build pe
 server" din setările proiectului.
 
+**Site-ul arată tot versiunea veche după primul deploy (sau dă eroare 500).**
+Apache / Nginx servește încă folderul vechi al site-ului, iar deploy-ul a rulat deja migrările noi pe baza de date
+comună, așa că, de obicei, codul vechi dă erori. Site-ul trebuie mutat pe `<Deploy folder>/current/public`:
+
+- activează **„Îndreaptă serverul web spre current"** în setările proiectului (cere „URL-ul site-ului") și fă
+  deploy din nou: pasul „Point the web server to current" schimbă `DocumentRoot` / `root`, face backup în
+  `.autodeploy/webserver/<release>/`, testează configurația și dă reload;
+- sau schimbă-l de mână cu configurația de pe pagina Quick setup.
+
+Mesajele pasului „Point the web server to current":
+
+- „WARNING: no Apache / Nginx site lists …" – niciun `ServerName` / `ServerAlias` / `server_name` nu are exact
+  host-ul din URL-ul site-ului (ex. URL-ul e `www.example.com`, dar site-ul are doar `example.com`). Corectează
+  URL-ul sau schimbă site-ul de mână; deploy-ul nu e oprit;
+- „… not an app public folder (a redirect?): left as it is" – un vhost cu acel host servește alt folder decât un
+  `…/public` (de obicei un vhost care doar redirecționează la HTTPS); e lăsat intenționat neatins;
+- „✖ … is not root and has no passwordless sudo" – userul SSH nu poate scrie în `/etc`: conectează-te ca root,
+  permite `sudo` fără parolă sau fă schimbarea de mână (log-ul arată exact ce); deploy-ul e marcat eșuat;
+- „✖ The … config test fails already, before any change" – configurația serverului web era deja stricată (alt
+  site); nimic nu a fost schimbat; repar-o (`apachectl configtest` / `nginx -t`) și fă deploy din nou;
+- „✖ The … config test failed after the change: every file is restored" – fișierele au fost puse la loc din
+  backup; output-ul testului arată linia cu problema;
+- „WARNING: these files still name the old folder …" – un pool PHP-FPM (`/etc/php/*/fpm/pool.d`,
+  `/etc/php-fpm.d`) sau un site mai conține folderul vechi al aplicației, de obicei în `open_basedir`, `chdir`,
+  loguri sau `Alias`. AutoDeploy nu le schimbă: cu un `open_basedir` care nu include noul Deploy folder, PHP
+  refuză fișierele din `releases/` (erori „open_basedir restriction in effect"). Adaugă Deploy folder-ul în
+  `open_basedir`, apoi `systemctl reload php8.4-fpm` (sau versiunea ta).
+
 **Site-ul arată fișiere vechi după deploy.**
 OPcache: comanda „Reload PHP-FPM" (după live) trebuie să fie activă. Ea găsește singură serviciul
 (`php8.4-fpm`, `php84-fpm` sau `php-fpm`); dacă PHP rulează ca modul Apache (mod_php), înlocuiește-o cu

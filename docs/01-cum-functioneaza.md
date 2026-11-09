@@ -54,10 +54,14 @@ AutoDeploy folosește structura clasică de deploy fără downtime (la fel ca En
 │   ├── .env                         ← același pentru toate release-urile
 │   └── storage/                     ← upload-uri, loguri, sesiuni – nu se pierd la deploy
 └── .autodeploy/                     ← arhive temporare la upload
+    └── webserver/20261106183000/    ← backup-ul fișierelor Apache / Nginx schimbate de acel deploy
 ```
 
 Serverul web trebuie să servească `/var/www/aplicatia-mea/current/public` (Apache: `DocumentRoot`, Nginx: `root`). Pagina „Quick setup" a
-proiectului îți dă configurația completă.
+proiectului îți dă configurația completă. Cu setarea **„Îndreaptă serverul web spre current"** (în engleză „Point the web
+server to current", oprită implicit) nu mai trebuie s-o schimbi de mână: imediat după activare, deploy-ul găsește site-ul din
+Apache / Nginx după host-ul din „URL-ul site-ului" și îi mută `DocumentRoot` / `root` pe `current/public` (cu backup în
+`.autodeploy/webserver/<release>/`, test de configurație și reload).
 
 ## Ce se întâmplă la un deploy
 
@@ -79,7 +83,10 @@ flowchart TD
     J --> L[Comenzi custom: înainte de live<br/>migrate, storage:link, optimize]
     K --> L
     L --> M[Activare: current -> noul release<br/>o singură redenumire atomică]
-    M --> N[Comenzi custom: după live<br/>queue:restart, reload PHP-FPM]
+    M --> W{Setarea Îndreaptă serverul<br/>web spre current e activă?}
+    W -- da --> WS[Server web -> current/public<br/>backup, configtest, reload]
+    W -- nu --> N
+    WS --> N[Comenzi custom: după live<br/>queue:restart, reload PHP-FPM]
     N --> Q[Permisiuni storage<br/>storage și bootstrap/cache date din nou userului web]
     Q --> O[Curățenie: păstrează ultimele N release-uri]
     O --> P[Health check opțional]
@@ -118,6 +125,20 @@ Reguli importante:
    activare și, dacă există comenzi „după live", din nou după ele (pasul „Fix storage permissions"):
    de exemplu `queue:restart` scrie în cache și poate crea foldere ale lui `root`, pe care PHP-FPM nu
    le-ar mai putea scrie.
+7. **Serverul web pe `current/public`** (pasul „Point the web server to current", doar cu setarea activă și cu
+   „URL-ul site-ului" completat): rulează imediat după activare, înaintea comenzilor „după live" și a health
+   check-ului, ca ele să vadă deja codul nou. Caută în `/etc/apache2/sites-enabled`, `/etc/httpd/conf.d`, `/etc/nginx/sites-enabled` și
+   `/etc/nginx/conf.d` site-urile care au host-ul URL-ului în `ServerName` / `ServerAlias` / `server_name`
+   (numele întreg: `app.example.com` nu se potrivește cu `myapp.example.com`). Schimbă doar un `DocumentRoot` /
+   `root` care se termină cu `/public`; un site care doar redirecționează (ex. `DocumentRoot /var/www/html`) rămâne
+   cum e. Face backup, schimbă calea veche peste tot în fișier (și în `<Directory>`), rulează `apachectl configtest`
+   / `nginx -t` și dă reload; dacă testul pică, pune la loc toate fișierele. Al doilea deploy nu mai schimbă nimic
+   („already serves current"). Are nevoie de root sau de `sudo` fără parolă.
+    - **Deploy-ul eșuează** (exit 1) când a găsit un site care trebuie schimbat, dar nu l-a putut schimba (fără
+      root/sudo, configurația pica deja, testul pică după schimbare, reload eșuat). Release-ul e deja live, dar
+      site-ul ar rula codul vechi pe baza de date deja migrată, deci trebuie să afli imediat.
+    - **Doar avertisment** (deploy-ul merge mai departe) când nu există niciun site cu acel host: AutoDeploy nu
+      poate ști ce site servește aplicația și scrie în log schimbarea exactă de făcut de mână.
 
 ## Rollback
 
@@ -125,9 +146,12 @@ Pe tab-ul **Releases** vezi release-urile încă prezente pe server. „Revino l
 
 1. verificare că folderul există;
 2. `current` mutat pe acel release (instant);
-3. comenzile „după live" (queue:restart, reload PHP-FPM);
-4. permisiunile lui `storage` date din nou userului web (dacă e setat și există comenzi „după live");
-5. health check, dacă e setat.
+3. serverul web verificat, dacă setarea „Îndreaptă serverul web spre current" e activă: de obicei afișează doar
+   „already serves current" (site-ul servește deja `current`); îl schimbă numai dacă setarea a fost activată
+   după ultimul deploy;
+4. comenzile „după live" (queue:restart, reload PHP-FPM);
+5. permisiunile lui `storage` date din nou userului web (dacă e setat și există comenzi „după live");
+6. health check, dacă e setat.
 
 Atenție: rollback-ul **nu** anulează migrările de bază de date. Dacă un deploy a schimbat structura
 bazei de date într-un mod incompatibil cu codul vechi, trebuie rezolvat manual.

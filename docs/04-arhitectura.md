@@ -68,8 +68,8 @@ erDiagram
 - `servers` – conexiunea (ssh / local), metoda de autentificare; `private_key`, `passphrase`, `password`
   sunt **criptate** (cast `encrypted`); `host_fingerprint` (TOFU); `info` (JSON cu RAM, disc, versiuni).
 - `projects` – repository, branch, `deploy_path`, binare, `build_strategy`, `local_path`, comenzile de
-  build, `shared_dirs` / `shared_files` (JSON), `web_user`, `keep_releases`, `keep_builds`,
-  `webhook_token`, `active_release` (ce e live).
+  build, `shared_dirs` / `shared_files` (JSON), `web_user`, `manage_web_server` (pasul `web_server`, implicit
+  `false`), `keep_releases`, `keep_builds`, `webhook_token`, `active_release` (ce e live).
 - `project_hooks` – `stage` (`before_build` / `before_activate` / `after_activate`), `script`, `enabled`, `sort`.
 - `deployments` – `type` (deploy / rollback), `status`, commit, `release`, `build_source`, `build_id`,
   `release_exists` (folderul e încă pe server → rollback posibil), `cancel_requested`, `error`.
@@ -103,12 +103,27 @@ erDiagram
    `failed`, restul `skipped`, release-ul neactivat e șters, deploy-ul `failed` cu mesajul erorii.
 4. **`DeployScripts`** e singurul loc cu bash-ul pipeline-ului: `prepare`, `clone` (doar commit-ul dorit,
    `git fetch --depth 1`), `shared`, `composer`, `hook`, `serverBuild`, `extractBuild`, `permissions`,
-   `activate` (`ln -sfn` + `mv -Tf`), `cleanup`, `removeRelease`. `permissions` rulează în `activate` și
+   `activate` (`ln -sfn` + `mv -Tf`), `webServer`, `cleanup`, `removeRelease`. `permissions` rulează în `activate` și
    încă o dată ca pas separat (`permissions`) după comenzile „după live" (deploy și rollback), doar când
    proiectul are `web_user` și cel puțin o astfel de comandă: ele rulează ca userul SSH și pot lăsa în
    `storage` fișiere pe care PHP-FPM nu le poate scrie. `wrap()` adaugă preambulul comun:
    `exec 2>&1`, nvm, `PATH`, `COMPOSER_ALLOW_SUPERUSER`, `GIT_SSH_COMMAND` cu
    `StrictHostKeyChecking=accept-new`, variabilele exportate și `set -e`.
+   `webServer()` (pasul `web_server`, pus de `DeploymentPlanner` imediat după `activate` – la deploy și la
+   rollback – doar când `Project::managesWebServer()`: setarea + un URL cu host) mută site-ul din Apache / Nginx pe
+   `current/public`. Rulează cu `set +e` și ieșiri explicite. Pașii: detectează serverele (`apache2ctl` /
+   `apachectl` + `sites-enabled` sau `conf.d`, `nginx` + `sites-enabled` sau `conf.d`; ambele, dacă există) → citește
+   (doar citire) fișierele încărcate, cu link-urile urmărite (`readlink -f`), și cu `awk` alege blocurile
+   `<VirtualHost>` / `server { }` care au host-ul în `ServerName` / `ServerAlias` / `server_name` (nume întreg, fără
+   majuscule) → păstrează doar rădăcinile care se termină cu `/public` (un vhost care doar redirecționează rămâne
+   neatins) → verifică root / `sudo -n`, apoi testul de configurație dinainte de orice schimbare → backup în
+   `$DEPLOY_PATH/.autodeploy/webserver/$RELEASE/` (cu `original-paths.txt`) → înlocuire de text simplu (tot cu
+   `awk`, fără regex, doar căi întregi: `/var/www/site/public` nu se potrivește în `/var/www/site/public2`) → test
+   din nou (la eșec: restaurează tot, fără reload) → `systemctl reload` (cu `service` și `apachectl -k graceful` /
+   `nginx -s reload` ca rezervă; un server oprit nu e pornit) → avertisment cu fișierele (site-uri, pool-uri
+   PHP-FPM) care mai conțin folderul vechi al aplicației (ex. `open_basedir`). Folderele în care caută sunt
+   variabile cu valori implicite (`APACHE_DIRS`, `NGINX_DIRS`, `FPM_DIRS`, `WEB_BACKUPS`), ca scriptul să poată
+   fi încercat pe o copie a lui `/etc`.
    Scripturile scriu linii-marker (`__AUTODEPLOY_COMMIT__`, `__AUTODEPLOY_RELEASES__`) pe care runner-ul
    le citește; interfața le ascunde din log.
 5. **`LocalBuilder`** (varianta „Build local") citește commit-ul/branch-ul cu git, rulează comanda de

@@ -198,3 +198,81 @@ it('adds no permissions step without a web user or without after-live hooks', fu
     expect($keys())->not->toContain('permissions')
         ->and(array_slice($keys(), -2))->toBe(['activate', 'cleanup']);
 });
+
+it('points the web server to current right after the switch, only with the setting and a site URL', function () {
+    $planner = app(DeploymentPlanner::class);
+    $keys = fn () => array_column($planner->deploySteps($this->project->fresh(), BuildStrategy::Server), 0);
+    $hooks = $this->project->hooksFor(HookStage::AfterActivate)->map(fn ($hook) => 'hook:'.$hook->id)->all();
+
+    // Off by default: nothing in /etc changes until the owner turns it on.
+    expect($this->project->fresh()->manage_web_server)->toBeFalse()
+        ->and($keys())->not->toContain('web_server');
+
+    // The URL host tells which site to change.
+    $this->project->update(['manage_web_server' => true, 'url' => null]);
+    expect($keys())->not->toContain('web_server');
+
+    $this->project->update(['url' => 'https://app.example.com']);
+    expect(array_slice($keys(), (int) array_search('activate', $keys(), true)))
+        ->toBe(['activate', 'web_server', ...$hooks, 'permissions', 'cleanup']);
+
+    $this->project->update(['manage_web_server' => false]);
+    expect($keys())->not->toContain('web_server');
+});
+
+it('runs the web server step after the switch and before the after-live hooks and the health check', function () {
+    $server = fakeServer();
+    Http::fake(['*' => Http::response('ok')]);
+    $this->project->update(['manage_web_server' => true, 'url' => 'https://App.Example.com', 'health_check_url' => 'https://app.example.com/up']);
+
+    app(DeploymentPlanner::class)->deploy($this->project, [], $this->user);
+
+    $deployment = Deployment::with('steps')->firstOrFail();
+    $step = $deployment->steps->firstWhere('key', 'web_server');
+    $index = fn (string $needle) => collect($server->scripts)->search(fn ($script) => str_contains($script, $needle));
+
+    expect($deployment->status)->toBe(DeploymentStatus::Finished)
+        ->and($step->status)->toBe(StepStatus::Finished)
+        ->and($step->name)->toBe('Point the web server to current')
+        ->and(__('Point the web server to current', [], 'ro'))->toBe('Îndreaptă serverul web spre current')
+        ->and($deployment->steps->pluck('key')->last())->toBe('health')
+        ->and($index("SITE_HOST='app.example.com'"))->toBeGreaterThan($index('mv -Tf current-next current'))
+        ->and($index('artisan queue:restart'))->toBeGreaterThan($index("SITE_HOST='app.example.com'"));
+});
+
+it('fails the deploy loudly when the web server cannot be switched, and keeps the new release live', function () {
+    $server = fakeServer(fn (string $script) => str_contains($script, 'SITE_HOST=')
+        ? new CommandResult(1, "✖ The Apache config test failed after the change: every file is restored and nothing was reloaded.\n")
+        : null);
+    $this->project->update(['manage_web_server' => true, 'url' => 'https://app.example.com']);
+
+    app(DeploymentPlanner::class)->deploy($this->project, [], $this->user);
+
+    $deployment = Deployment::with('steps')->firstOrFail();
+    $step = $deployment->steps->firstWhere('key', 'web_server');
+
+    expect($deployment->status)->toBe(DeploymentStatus::Failed)
+        ->and($step->status)->toBe(StepStatus::Failed)
+        ->and($step->output)->toContain('every file is restored')
+        ->and($deployment->steps->firstWhere('key', 'cleanup')->status)->toBe(StepStatus::Skipped)
+        // The switch already happened: the release stays live and is not removed.
+        ->and($this->project->fresh()->active_release)->toBe($deployment->release)
+        ->and($server->ran('Removed the unfinished release'))->toBeFalse();
+});
+
+it('checks the web server in a rollback too', function () {
+    fakeServer();
+    $this->project->update(['manage_web_server' => true, 'url' => 'https://app.example.com']);
+    $target = $this->project->deployments()->create([
+        'type' => 'deploy',
+        'status' => DeploymentStatus::Finished,
+        'release' => '20260101000000',
+        'release_exists' => true,
+    ]);
+
+    $rollback = app(DeploymentPlanner::class)->rollback($this->project->fresh(), $target, $this->user)->fresh('steps');
+    $hooks = $this->project->hooksFor(HookStage::AfterActivate)->map(fn ($hook) => 'hook:'.$hook->id)->all();
+
+    expect($rollback->status)->toBe(DeploymentStatus::Finished)
+        ->and($rollback->steps->pluck('key')->all())->toBe(['check_release', 'activate', 'web_server', ...$hooks, 'permissions']);
+});

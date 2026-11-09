@@ -183,6 +183,30 @@
                 </span>
             </p>
 
+            <div class="space-y-2 rounded-lg border border-slate-200 p-4">
+                <ToggleInput
+                    v-model="form.manage_web_server"
+                    :label="$t('Point the web server to current')"
+                    :description="
+                        $t(
+                            'Right after the switch, AutoDeploy finds the Apache / Nginx site of the site URL and points its DocumentRoot / root to :path (backup, config test, reload). Needs root or passwordless sudo on the server. Off: you change it once by hand (see Quick setup).',
+                            { path: publicPath },
+                        )
+                    "
+                />
+                <p
+                    v-if="form.manage_web_server && !form.url"
+                    class="flex items-start gap-2 text-xs text-amber-700"
+                >
+                    <TriangleAlert class="mt-px size-3.5 shrink-0" />
+                    {{
+                        $t(
+                            'Needs the site URL (General): its host name tells which site to change.',
+                        )
+                    }}
+                </p>
+            </div>
+
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <TextInput
                     v-model="form.php_binary"
@@ -648,6 +672,7 @@ export default defineComponent({
                 run_composer: v.run_composer ?? true,
                 composer_flags: v.composer_flags ?? '',
                 web_user: v.web_user ?? '',
+                manage_web_server: v.manage_web_server ?? false,
                 keep_releases: (v.keep_releases ?? 3) as number | null,
                 build_strategy: (v.build_strategy ?? 'local') as BuildStrategy,
                 local_path: v.local_path ?? '',

@@ -23,19 +23,26 @@ Testele nu pornesc nici workeri de coadă reali: `tests/TestCase.php` înlocuie�
 `tests/Support/FakeWorkerLauncher.php`, care doar notează workerii care ar fi fost porniți
 (`fakeWorkerLauncher()->launched`).
 
-| Fișier                         | Ce verifică                                                                                                                                                                                             |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Feature/DeploymentTest.php`   | deploy complet, oprire la pasul care eșuează + ștergerea release-ului, un singur deploy odată, rollback, anulare, comenzi custom cu variabile, permisiunile după comenzile „după live"                  |
-| `Feature/LocalBuildTest.php`   | build local cu un repository git temporar: modificări necomise și commit ne-push-uit opresc deploy-ul înainte de server, fetch eșuat doar avertizează, branch local push-uit, folder fără git           |
-| `Feature/ProjectSetupTest.php` | quick setup: importul lui `storage` cu hard link-uri (altfel copie normală), doar când e cerut                                                                                                          |
-| `Feature/BuildTest.php`        | upload `.zip` (găsește `public/build`), păstrarea ultimelor N, blocarea „zip slip", deploy cu build salvat (upload SFTP + `tar`)                                                                        |
-| `Feature/WorkerTest.php`       | quick setup worker, configurația Supervisor, scheduler on/off                                                                                                                                           |
-| `Feature/WebhookTest.php`      | ping GitHub, push pe branch-ul corect / alt branch, opțiune oprită, token greșit                                                                                                                        |
-| `Feature/AuthTest.php`         | redirect la login, login cu adminul din seeder, parolă greșită, logout                                                                                                                                  |
-| `Feature/PagesTest.php`        | fiecare pagină se încarcă; creare proiect cu comenzile implicite; validări; salvarea `.env`; mesajul „Primul deploy: rulează Quick setup" până la primul deploy reușit                                  |
-| `Feature/QueueWorkerTest.php`  | pornirea automată a workerului la un job pus în coadă (nu lângă un worker cu heartbeat, nu cu `AUTODEPLOY_AUTO_WORKER=false`, nu pe `sync`, o singură dată), heartbeat-ul, starea pe pagina deploy-ului |
-| `Unit/DeployScriptsTest.php`   | scripturile bash (quote, variabile, activare atomică, shared, cleanup, permisiuni), citirea markerilor, recunoașterea repo-urilor GitHub                                                                |
-| `Unit/WorkerLauncherTest.php`  | comanda care pornește workerul pe Windows și Linux (căi cu spații), găsirea PHP-ului de linie de comandă                                                                                                |
+| Fișier                         | Ce verifică                                                                                                                                                                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Feature/DeploymentTest.php`   | deploy complet, oprire la pasul care eșuează + ștergerea release-ului, un singur deploy odată, rollback, anulare, comenzi custom cu variabile, permisiunile după comenzile „după live"; pasul `web_server` (setare + URL, după activare, eșec, rollback) |
+| `Feature/LocalBuildTest.php`   | build local cu un repository git temporar: modificări necomise și commit ne-push-uit opresc deploy-ul înainte de server, fetch eșuat doar avertizează, branch local push-uit, folder fără git                                                            |
+| `Feature/ProjectSetupTest.php` | quick setup: importul lui `storage` cu hard link-uri (altfel copie normală), doar când e cerut                                                                                                                                                           |
+| `Feature/BuildTest.php`        | upload `.zip` (găsește `public/build`), păstrarea ultimelor N, blocarea „zip slip", deploy cu build salvat (upload SFTP + `tar`)                                                                                                                         |
+| `Feature/WorkerTest.php`       | quick setup worker, configurația Supervisor, scheduler on/off                                                                                                                                                                                            |
+| `Feature/WebhookTest.php`      | ping GitHub, push pe branch-ul corect / alt branch, opțiune oprită, token greșit                                                                                                                                                                         |
+| `Feature/AuthTest.php`         | redirect la login, login cu adminul din seeder, parolă greșită, logout                                                                                                                                                                                   |
+| `Feature/PagesTest.php`        | fiecare pagină se încarcă; creare proiect cu comenzile implicite; validări; salvarea `.env`; mesajul „Primul deploy: rulează Quick setup" până la primul deploy reușit; setarea `manage_web_server`                                                      |
+| `Feature/QueueWorkerTest.php`  | pornirea automată a workerului la un job pus în coadă (nu lângă un worker cu heartbeat, nu cu `AUTODEPLOY_AUTO_WORKER=false`, nu pe `sync`, o singură dată), heartbeat-ul, starea pe pagina deploy-ului                                                  |
+| `Unit/DeployScriptsTest.php`   | scripturile bash (quote, variabile, activare atomică, shared, cleanup, permisiuni), citirea markerilor, recunoașterea repo-urilor GitHub; scriptul `web_server` (host, backup, configtest, căi cu spații)                                                |
+| `Unit/WorkerLauncherTest.php`  | comanda care pornește workerul pe Windows și Linux (căi cu spații), găsirea PHP-ului de linie de comandă                                                                                                                                                 |
+
+Scriptul pasului `web_server` nu se rulează în Pest (are nevoie de Linux, Apache / Nginx și root), dar ia folderele
+din variabile (`APACHE_DIRS`, `NGINX_DIRS`, `FPM_DIRS`, `WEB_BACKUPS`). Așa a fost încercat pe o copie falsă a lui
+`/etc` (site-uri cu link-uri în `sites-enabled`, `-le-ssl.conf`, vhost de redirect, `server_name` pe mai multe
+linii, pool PHP-FPM cu `open_basedir`, cale cu spații), cu `apachectl`, `nginx` și `systemctl` înlocuite de
+funcții bash: schimbare + backup, a doua rulare fără schimbări, test picat → restaurare, fără root / `sudo`,
+host negăsit, server web lipsă, reload eșuat, server oprit.
 
 ## Test end-to-end real (fără server de producție)
 

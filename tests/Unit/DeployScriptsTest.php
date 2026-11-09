@@ -91,6 +91,122 @@ it('gives storage and bootstrap/cache to the web user', function () {
         ->and(scriptsFor()->cleanup(3))->not->toContain('chown');
 });
 
+/**
+ * Lines where bash would split $name on spaces: the variable is not inside "…" on its line.
+ * Knows '…', "…", \ and $( … ) inside "…" (e.g. "$(cut -f1 "$WORK/plan")").
+ *
+ * @return list<string>
+ */
+function unquotedUses(string $script, string $name): array
+{
+    $lines = [];
+
+    foreach (explode("\n", $script) as $line) {
+        if (str_starts_with(ltrim($line), '#')) {
+            continue;
+        }
+
+        $stack = []; // "d" inside "…", "s" inside '…', "c" inside $( … )
+
+        for ($i = 0; $i < strlen($line); $i++) {
+            $top = end($stack);
+            $char = $line[$i];
+
+            if ($top === 's') {
+                if ($char === "'") {
+                    array_pop($stack);
+                }
+            } elseif ($char === '\\') {
+                $i++;
+            } elseif ($char === '$' && ($line[$i + 1] ?? '') === '(') {
+                $stack[] = 'c';
+                $i++;
+            } elseif ($char === ')' && $top === 'c') {
+                array_pop($stack);
+            } elseif ($char === '"' && $top === 'd') {
+                array_pop($stack);
+            } elseif ($char === '"') {
+                $stack[] = 'd';
+            } elseif ($char === "'" && $top !== 'd') {
+                $stack[] = 's';
+            } elseif ($char === '$' && $top !== 'd' && preg_match('/\G\$\{?'.$name.'(?![A-Za-z0-9_])/', $line, $m, 0, $i)) {
+                $lines[] = trim($line);
+            }
+        }
+    }
+
+    return $lines;
+}
+
+it('finds the Apache and Nginx sites of the site URL by their whole host name', function () {
+    $script = scriptsFor(['url' => 'https://App.Example.com/shop'])->webServer();
+
+    expect($script)
+        ->toStartWith("SITE_HOST='app.example.com'\n")
+        ->toContain('TARGET="$CURRENT_PATH/public"')
+        // The folders are variables, so the script can be tried on a copy of /etc.
+        ->toContain('APACHE_DIRS="${APACHE_DIRS:-/etc/apache2/sites-enabled /etc/httpd/conf.d}"')
+        ->toContain('NGINX_DIRS="${NGINX_DIRS:-/etc/nginx/sites-enabled /etc/nginx/conf.d}"')
+        ->toContain('FPM_DIRS="${FPM_DIRS:-/etc/php/*/fpm/pool.d /etc/php-fpm.d /etc/php*/php-fpm.d}"')
+        ->toContain('APACHECTL="$(command -v apache2ctl || command -v apachectl)"')
+        // Whole names in lower case, in ServerName / ServerAlias and server_name.
+        ->toContain('d == "servername" || d == "serveralias" { for (i = 2; i <= NF; i++) if (name($i) == host) hit = 1 }')
+        ->toContain('if (h != "" && (h == host || h == "." host)) hit = 1')
+        // sites-enabled links are followed: the real file is edited, the link stays.
+        ->toContain('readlink -f "$F"')
+        // Only an app public folder moves; a site that only redirects stays as it is.
+        ->toContain("app_public() { case \"\$1\" in *'\$'*) return 1 ;; /?*/public) return 0 ;; *) return 1 ;; esac; }")
+        ->toContain('already serves current')
+        // Plain text replacement of whole paths, no regex to escape.
+        ->toContain('OLD_ROOT="$OLD" NEW_ROOT="$TARGET" MODE=swap awk "$PATH_AWK" "$F" > "$WORK/new"')
+        // The old app folder is only reported in PHP-FPM pools and sites (open_basedir).
+        ->toContain('OLD_ROOT="$APP" MODE=find awk "$PATH_AWK" "$F"')
+        ->toContain('WARNING: these files still name the old folder $APP');
+});
+
+it('backs up, tests and reloads the web server, and restores every file when the test fails', function () {
+    $script = scriptsFor(['url' => 'https://app.example.com'])->webServer();
+    $position = fn (string $text, int $after = 0) => strpos($script, $text, $after);
+
+    expect($script)
+        ->toContain('WEB_BACKUPS="${WEB_BACKUPS:-$DEPLOY_PATH/.autodeploy/webserver}"')
+        ->toContain('BACKUP="$WEB_BACKUPS/$RELEASE"')
+        ->toContain('if ! $SUDO cp -p "$F" "$BACKUP/$NAME"; then')
+        ->toContain('printf \'%s\t%s\n\' "$NAME" "$F" >> "$BACKUP/original-paths.txt"')
+        ->toContain('config_test() { if [ "$1" = apache ]; then $SUDO "$APACHECTL" configtest; else $SUDO "$NGINX" -t; fi; }')
+        ->toContain('$SUDO systemctl reload apache2 2>/dev/null || $SUDO systemctl reload httpd 2>/dev/null')
+        ->toContain('$SUDO systemctl reload nginx 2>/dev/null || $SUDO service nginx reload 2>/dev/null || $SUDO "$NGINX" -s reload')
+        // Root or passwordless sudo, otherwise a loud failure with the manual change.
+        ->toContain('elif sudo -n true >/dev/null 2>&1; then')
+        // No site of the host at all: a warning, the deploy goes on.
+        ->toContain('WARNING: no Apache / Nginx site lists $SITE_HOST');
+
+    // Order: test before any change, back up, change, test again (restore on failure), reload.
+    expect($position('fails already, before any change'))->toBeLessThan($position('echo "Backup: $BACKUP"'))
+        ->and($position('echo "Backup: $BACKUP"'))->toBeLessThan($position('NEW_ROOT="$TARGET" MODE=swap'))
+        ->and($position('NEW_ROOT="$TARGET" MODE=swap'))->toBeLessThan($position('config test failed after the change'))
+        ->and($position('restore', $position('config test failed after the change')))->toBeLessThan($position('elif reload_web "$KIND"; then'));
+});
+
+it('quotes the target path, so deploy folders with spaces work', function () {
+    $scripts = scriptsFor(['url' => 'https://app.example.com', 'deploy_path' => '/var/www/my shop']);
+    $script = $scripts->webServer();
+
+    expect($scripts->wrap($script))->toContain("CURRENT_PATH='/var/www/my shop/current'");
+
+    foreach (['TARGET', 'CURRENT_PATH', 'DEPLOY_PATH', 'BACKUP', 'WORK', 'F', 'OLD', 'APP'] as $name) {
+        expect(unquotedUses($script, $name))->toBe([], "\${$name} is not quoted");
+    }
+
+    // A config value gets quotes when the new path has spaces and the old one had none.
+    expect($script)->toContain('quoted = (new ~ /[ \t]/) ? "\"" new "\"" : new');
+});
+
+it('prints a warning instead of a script without a site URL', function () {
+    expect(scriptsFor(['url' => null])->webServer())->toContain('WARNING: the project has no site URL')
+        ->and(scriptsFor(['url' => null])->webServer())->not->toContain('systemctl');
+});
+
 it('reads the commit and the releases from the step output', function () {
     expect(DeployScripts::parseCommit("x\n__AUTODEPLOY_COMMIT__\tabc1234\tAda\tFix it\n"))
         ->toBe(['hash' => 'abc1234', 'author' => 'Ada', 'message' => 'Fix it'])

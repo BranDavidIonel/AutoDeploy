@@ -38,6 +38,10 @@ o adaugi în GitHub → repository → _Settings → Deploy keys_, ca serverul s
 - **Build front-end**: **Build local**, cu _Folder local_ = folderul proiectului de pe PC
   (ex. `C:\Users\tu\Desktop\work\my-site`) și comanda `npm run build`.
 - **Shared**: `storage` (foldere) și `.env` (fișiere) – rămân la fel între release-uri.
+- **Îndreaptă serverul web spre current** (opțional, oprit implicit): după fiecare activare, AutoDeploy găsește
+  site-ul din Apache / Nginx al host-ului din **URL-ul site-ului** (ex. `https://app.example.com` →
+  `app.example.com`) și îi mută `DocumentRoot` / `root` pe `current/public` (vezi pasul 5). Cere URL-ul site-ului
+  și, pe server, root sau `sudo` fără parolă. Oprit: schimbi tu o singură dată configurația serverului web.
 
 La creare proiectul primește comenzile Laravel standard (vezi pasul 6).
 
@@ -57,6 +61,10 @@ Tab-ul **Quick setup** al proiectului:
    sunt înlocuite). Dacă hard link-urile nu merg (de ex. alt sistem de fișiere), se face o copie
    normală (`cp -a`). Importul se face doar dacă `shared/storage` nu există încă.
 3. Rezultatul apare într-o fereastră cu tot output-ul serverului.
+
+Cardul **Server web** de pe aceeași pagină spune cine mută site-ul pe `current/public`: cu setarea „Îndreaptă
+serverul web spre current" activă, primul deploy (configurația afișată e doar de referință); altfel tu, o
+singură dată după primul deploy, cu configurația afișată (sau activezi setarea din **Setări**).
 
 ## 4. Verifică `.env`
 
@@ -80,8 +88,19 @@ Pagina deploy-ului arată pașii cu log live, durata, commit-ul. Poți anula (du
 dacă workerul nu mai răspunde, „Oprește forțat". Workerul de coadă pornește singur dacă nu rulează deja;
 dacă deploy-ul stă în coadă, pagina spune de ce.
 
-După primul deploy reușit, schimbă serverul web să servească `current/public`. AutoDeploy detectează
-dacă serverul folosește Apache sau Nginx și arată configurația potrivită pe pagina Quick setup.
+**Serverul web.** Până când site-ul servește `current/public`, Apache / Nginx servește tot folderul vechi, deși
+deploy-ul a rulat deja migrările noi pe baza de date comună: codul vechi poate da erori (500). Deci imediat după
+primul deploy:
+
+- **automat**, cu setarea „Îndreaptă serverul web spre current" (pasul 2): primul deploy are, imediat după
+  „Activate release", pasul „Point the web server to current". Log-ul lui arată fiecare fișier schimbat
+  (`fișier: /var/www/my-site/public → /var/www/my-site-app/current/public`), folderul de backup
+  (`.autodeploy/webserver/<release>/`, cu `original-paths.txt` = de unde vine fiecare fișier), rezultatul
+  `configtest` / `nginx -t` și reload-ul. Deploy-urile următoare doar afișează „already serves current". Dacă
+  pasul eșuează (fără root/sudo, test de configurație picat – fișierele sunt puse la loc automat), deploy-ul e
+  marcat eșuat: release-ul e live, dar site-ul trebuie mutat de mână, cu instrucțiunile din log;
+- **de mână**, cu configurația de mai jos. AutoDeploy detectează dacă serverul folosește Apache sau Nginx și
+  arată configurația potrivită pe pagina Quick setup.
 
 **Apache** (cu PHP-FPM): în ambele fișiere ale site-ului (http și
 `-le-ssl.conf`) schimbi doar `DocumentRoot` și `<Directory>`; `SetHandler` rămâne la fel:

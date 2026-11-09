@@ -99,6 +99,7 @@ class DeploymentPlanner
             $steps = [
                 ['check_release', 'Check release on the server'],
                 ['activate', 'Activate release'],
+                ...$this->webServerSteps($project),
                 ...$this->afterActivateSteps($project),
             ];
 
@@ -164,6 +165,7 @@ class DeploymentPlanner
         }
 
         $steps[] = ['activate', 'Activate release'];
+        array_push($steps, ...$this->webServerSteps($project));
         array_push($steps, ...$this->afterActivateSteps($project));
         $steps[] = ['cleanup', 'Clean up old releases'];
 
@@ -172,6 +174,21 @@ class DeploymentPlanner
         }
 
         return $steps;
+    }
+
+    /**
+     * Right after the switch, before the "after going live" hooks (PHP-FPM reload, queue
+     * restart) and the health check, so they all see the site that serves current.
+     *
+     * Rollbacks run it too: there current only moves and the site already serves it, so it
+     * just prints "already serves current". It still switches the site when the setting was
+     * turned on after the last deploy, so after any activation the site serves current.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function webServerSteps(Project $project): array
+    {
+        return $project->managesWebServer() ? [['web_server', 'Point the web server to current']] : [];
     }
 
     /**

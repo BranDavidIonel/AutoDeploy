@@ -38,7 +38,7 @@ you move the build to the server with one setting.
 - **Queue workers (Supervisor)** and the **scheduler (cron)** set up with a single button.
 - **Quick setup** of a project on its server: checks + import of `.env` and `storage` from an existing site.
 - **`.env` editor** right on the server, server info (RAM, disk, versions), SSH key for GitHub.
-- **Apache or Nginx** – the web server is detected and the matching config is shown.
+- **Apache or Nginx** – the web server is detected and the matching config is shown; optionally every deploy points the site of the project URL to `current/public` by itself (backup, config test, reload).
 - Interface in **English and Romanian** – pick the language in the top bar (English by default).
 
 **Stack:** Laravel 13 · Inertia 3 · Vue 3.5 + TypeScript · Tailwind CSS 4 · Wayfinder · phpseclib 3

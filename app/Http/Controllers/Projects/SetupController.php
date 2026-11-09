@@ -46,7 +46,7 @@ class SetupController extends Controller
     /** Apache + PHP-FPM: only DocumentRoot (and Directory) change; with Let's Encrypt the -le-ssl.conf file too. */
     private function apacheSnippet(Project $project): string
     {
-        $host = $project->url ? (parse_url($project->url, PHP_URL_HOST) ?: 'example.com') : 'example.com';
+        $host = $project->urlHost() ?? 'example.com';
         $public = $project->currentPath().'/public';
 
         return implode("\n", [
@@ -72,7 +72,7 @@ class SetupController extends Controller
 
     private function nginxSnippet(Project $project): string
     {
-        $host = $project->url ? (parse_url($project->url, PHP_URL_HOST) ?: 'example.com') : 'example.com';
+        $host = $project->urlHost() ?? 'example.com';
 
         return implode("\n", [
             'server {',

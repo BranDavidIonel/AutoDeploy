@@ -591,6 +591,8 @@ export default defineComponent({
                 case 'web_root': {
                     const apache = this.checks.web_server === 'apache';
                     const server = apache ? 'Apache' : 'Nginx';
+                    // The deploys switch the site themselves (same rule as the planner).
+                    const auto = p.manage_web_server && !!p.url;
 
                     if (yes) {
                         return {
@@ -617,15 +619,19 @@ export default defineComponent({
                               label: t(':server site', { server }),
                               status: 'warn',
                               value: t('not pointing here yet'),
-                              fix: apache
+                              fix: auto
                                   ? t(
-                                        'Set DocumentRoot to :path in the Apache site (and in its -le-ssl.conf), then reload Apache.',
-                                        { path: p.paths.public },
+                                        'The next deploy points it here: “Point the web server to current” is on.',
                                     )
-                                  : t(
-                                        'Set root to :path in your Nginx site, then reload Nginx.',
-                                        { path: p.paths.public },
-                                    ),
+                                  : apache
+                                    ? t(
+                                          'Set DocumentRoot to :path in the Apache site (and in its -le-ssl.conf), then reload Apache.',
+                                          { path: p.paths.public },
+                                      )
+                                    : t(
+                                          'Set root to :path in your Nginx site, then reload Nginx.',
+                                          { path: p.paths.public },
+                                      ),
                               link: {
                                   label: t(':server config', { server }),
                                   href: '#web-server',

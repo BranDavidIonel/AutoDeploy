@@ -92,3 +92,38 @@ it('reminds to run Quick setup until the first deploy works', function () {
     $this->get(route('projects.show', $project))
         ->assertInertia(fn ($page) => $page->where('project.first_deploy', false));
 });
+
+it('saves the web server setting, which needs a site URL', function () {
+    $settings = [
+        'server_id' => $this->project->server_id,
+        'name' => $this->project->name,
+        'repository' => $this->project->repository,
+        'branch' => 'main',
+        'deploy_path' => $this->project->deploy_path,
+        'php_binary' => 'php',
+        'composer_binary' => 'composer',
+        'keep_releases' => 3,
+        'build_strategy' => 'server',
+        'server_build_command' => 'npm ci && npm run build',
+        'local_build_command' => 'npm run build',
+        'build_output' => 'public/build',
+        'keep_builds' => 3,
+        'manage_web_server' => true,
+    ];
+
+    $this->put(route('projects.update', $this->project), [...$settings, 'url' => ''])
+        ->assertSessionHasErrors(['url' => 'Set the site URL: AutoDeploy finds the Apache / Nginx site by its host name.']);
+    expect($this->project->fresh()->manage_web_server)->toBeFalse();
+
+    $this->put(route('projects.update', $this->project), [...$settings, 'manage_web_server' => 'nope'])
+        ->assertSessionHasErrors('manage_web_server');
+
+    $this->put(route('projects.update', $this->project), [...$settings, 'url' => 'https://app.example.com'])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect(route('projects.edit', $this->project));
+
+    expect($this->project->fresh()->manage_web_server)->toBeTrue();
+
+    $this->get(route('projects.setup.show', $this->project))
+        ->assertInertia(fn ($page) => $page->where('project.manage_web_server', true)->where('project.url', 'https://app.example.com'));
+});

@@ -53,6 +53,7 @@ class ProjectController extends Controller
                 'shared_dirs' => ['storage'],
                 'shared_files' => ['.env'],
                 'web_user' => 'www-data',
+                'manage_web_server' => false,
             ],
         ]);
     }

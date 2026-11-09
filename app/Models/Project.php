@@ -38,6 +38,7 @@ use Illuminate\Support\Str;
  * @property list<string>|null $shared_dirs
  * @property list<string>|null $shared_files
  * @property string|null $web_user
+ * @property bool $manage_web_server
  * @property string|null $health_check_url
  * @property bool $auto_deploy
  * @property string $webhook_token
@@ -74,6 +75,7 @@ class Project extends Model
         'shared_dirs',
         'shared_files',
         'web_user',
+        'manage_web_server',
         'health_check_url',
         'auto_deploy',
         'scheduler_enabled',
@@ -99,6 +101,7 @@ class Project extends Model
         'build_output' => 'public/build',
         'keep_builds' => 3,
         'web_user' => 'www-data',
+        'manage_web_server' => false,
         'auto_deploy' => false,
         'scheduler_enabled' => false,
     ];
@@ -108,6 +111,7 @@ class Project extends Model
         return [
             'build_strategy' => BuildStrategy::class,
             'run_composer' => 'boolean',
+            'manage_web_server' => 'boolean',
             'auto_deploy' => 'boolean',
             'scheduler_enabled' => 'boolean',
             'keep_releases' => 'integer',
@@ -212,6 +216,20 @@ class Project extends Model
     public function currentPath(): string
     {
         return $this->deployPath().'/current';
+    }
+
+    /** Host of the site URL in lower case (app.example.com), null without a URL. */
+    public function urlHost(): ?string
+    {
+        $host = $this->url ? parse_url($this->url, PHP_URL_HOST) : null;
+
+        return is_string($host) && $host !== '' ? strtolower($host) : null;
+    }
+
+    /** True when deploys point the Apache / Nginx site of the URL host to current/public. */
+    public function managesWebServer(): bool
+    {
+        return $this->manage_web_server && $this->urlHost() !== null;
     }
 
     /** @return list<string> */

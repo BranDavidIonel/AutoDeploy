@@ -176,6 +176,8 @@ export type Project = {
     shared_dirs: string[];
     shared_files: string[];
     web_user: string | null;
+    /** Deploys point the Apache / Nginx site of the URL host to current/public. */
+    manage_web_server: boolean;
     health_check_url: string | null;
     auto_deploy: boolean;
     scheduler_enabled: boolean;
