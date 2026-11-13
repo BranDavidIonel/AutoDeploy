@@ -15,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property int $project_id
  * @property int|null $user_id
  * @property int|null $build_id
+ * @property int|null $restore_backup_id
  * @property DeploymentType $type
  * @property DeploymentStatus $status
  * @property string $triggered_by
@@ -38,6 +39,7 @@ class Deployment extends Model
     protected $fillable = [
         'user_id',
         'build_id',
+        'restore_backup_id',
         'type',
         'status',
         'triggered_by',
@@ -84,6 +86,16 @@ class Deployment extends Model
     public function build(): BelongsTo
     {
         return $this->belongsTo(Build::class);
+    }
+
+    /**
+     * The database backup a restore (or a rollback with the database) puts back.
+     *
+     * @return BelongsTo<Backup, $this>
+     */
+    public function restoreBackup(): BelongsTo
+    {
+        return $this->belongsTo(Backup::class, 'restore_backup_id');
     }
 
     /** @return HasMany<DeploymentStep, $this> */

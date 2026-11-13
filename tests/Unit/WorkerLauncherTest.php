@@ -35,6 +35,38 @@ it('builds the Linux command in the background with nohup', function () {
     expect($command)->toBe("nohup /usr/bin/php8.4 '/srv/auto deploy/it'\\''s/artisan' queue:work database --stop-when-empty --timeout=3600 --tries=1 --sleep=1 >> '/srv/auto deploy/it'\\''s/storage/logs/queue-worker.log' 2>&1 &");
 });
 
+it('detaches the Linux worker into a session of its own with setsid', function () {
+    // Started from PHP-FPM or Apache: no signal for their process group may reach it.
+    $command = (new WorkerLauncher)->commandLine(
+        '/usr/bin/php8.4',
+        '/srv/autodeploy/artisan',
+        'database',
+        '/srv/autodeploy/storage/logs/queue-worker.log',
+        false,
+        '/usr/bin/setsid',
+    );
+
+    expect($command)->toBe('/usr/bin/setsid nohup /usr/bin/php8.4 /srv/autodeploy/artisan queue:work database --stop-when-empty --timeout=3600 --tries=1 --sleep=1 >> /srv/autodeploy/storage/logs/queue-worker.log 2>&1 &');
+});
+
+it('finds the command line PHP of the same version next to PHP-FPM (php8.4 on Ubuntu)', function () {
+    $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'autodeploy-php-'.bin2hex(random_bytes(4));
+    mkdir($dir);
+    $launcher = new WorkerLauncher;
+
+    try {
+        expect($launcher->sameVersionBinary($dir))->toBeNull();
+
+        $binary = $dir.DIRECTORY_SEPARATOR.'php'.PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;
+        touch($binary);
+
+        expect($launcher->sameVersionBinary($dir))->toBe($binary);
+    } finally {
+        @unlink($dir.DIRECTORY_SEPARATOR.'php'.PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION);
+        @rmdir($dir);
+    }
+});
+
 it('uses the configured PHP binary only when it exists', function () {
     config(['autodeploy.php_binary' => PHP_BINARY]);
     expect((new WorkerLauncher)->phpBinary())->toBe(PHP_BINARY);

@@ -2,11 +2,13 @@
 
 namespace App\Services\Deploy;
 
+use App\Enums\BackupKind;
 use App\Enums\DeploymentStatus;
 use App\Enums\DeploymentType;
 use App\Enums\StepStatus;
 use App\Exceptions\DeployException;
 use App\Exceptions\DeploymentCancelled;
+use App\Models\Backup;
 use App\Models\Build;
 use App\Models\Deployment;
 use App\Models\DeploymentStep;
@@ -33,6 +35,8 @@ class DeploymentRunner
 
     private DeployScripts $scripts;
 
+    private BackupScripts $backupScripts;
+
     private ?Connection $connection = null;
 
     private ?StepOutput $out = null;
@@ -43,6 +47,16 @@ class DeploymentRunner
     private bool $releaseCreated = false;
 
     private bool $activated = false;
+
+    /** "php artisan down" ran: the site must come back up, also when a later step fails. */
+    private bool $maintenance = false;
+
+    /**
+     * From the start of a database restore until the switch to the release: a cancel waits,
+     * so the site never stays with a half restored database or with the newer code on the
+     * older database.
+     */
+    private bool $holdCancel = false;
 
     public function __construct(
         private readonly ConnectionFactory $connections,
@@ -67,6 +81,7 @@ class DeploymentRunner
 
         $deployment->forceFill(['status' => DeploymentStatus::Running, 'started_at' => now()])->save();
         $this->scripts = new DeployScripts($this->project, (string) $deployment->release);
+        $this->backupScripts = new BackupScripts($this->project);
 
         $current = null;
 
@@ -76,7 +91,7 @@ class DeploymentRunner
                     continue;
                 }
 
-                if ((bool) Deployment::whereKey($deployment->id)->value('cancel_requested')) {
+                if (! $this->holdCancel && (bool) Deployment::whereKey($deployment->id)->value('cancel_requested')) {
                     throw new DeploymentCancelled;
                 }
 
@@ -115,6 +130,11 @@ class DeploymentRunner
             $step->key === 'web_server' => $this->exec($this->scripts->webServer()),
             $step->key === 'permissions' => $this->exec($this->scripts->permissions()),
             $step->key === 'check_release' => $this->exec($this->scripts->checkRelease()),
+            $step->key === 'db_backup' => $this->backupDatabase(),
+            $step->key === 'check_backup' => $this->exec($this->backupScripts->check($this->restoreBackup()->file)),
+            $step->key === 'maintenance_on' => $this->maintenanceOn(),
+            $step->key === 'db_restore' => $this->restoreDatabase(),
+            $step->key === 'maintenance_off' => $this->maintenanceOff(),
             $step->key === 'cleanup' => $this->cleanup(),
             $step->key === 'health' => $this->healthCheck(),
             $step->isHook() => $this->exec($this->scripts->hook((string) $step->script)),
@@ -184,6 +204,7 @@ class DeploymentRunner
     {
         $this->exec($this->scripts->activate());
         $this->activated = true;
+        $this->holdCancel = false;
 
         $this->deployment->forceFill(['release_exists' => true])->save();
         $this->project->forceFill([
@@ -191,6 +212,123 @@ class DeploymentRunner
             'active_deployment_id' => $this->deployment->id,
             'last_deployed_at' => now(),
         ])->save();
+    }
+
+    /**
+     * Dumps the database on the server, saves the backup row and removes the backups the
+     * retention rules no longer keep. In a deploy it runs right before the migrations: a
+     * failure stops the deploy there, with the site untouched.
+     */
+    private function backupDatabase(): void
+    {
+        $kind = match ($this->deployment->type) {
+            DeploymentType::Deploy => BackupKind::BeforeDeploy,
+            DeploymentType::Backup => BackupKind::Manual,
+            default => BackupKind::BeforeRestore,
+        };
+
+        $result = $this->exec($this->backupScripts->backup($kind, inRelease: $kind === BackupKind::BeforeDeploy));
+        $saved = BackupScripts::parseBackup($result->output);
+
+        if ($saved === null) {
+            // sqlite before its database file exists: there is nothing to keep (or to lose).
+            if ($kind === BackupKind::Manual) {
+                throw new DeployException(__('Nothing was backed up: the database file does not exist yet.'));
+            }
+
+            return;
+        }
+
+        $restoring = $kind === BackupKind::BeforeRestore ? $this->deployment->restoreBackup : null;
+
+        $this->project->backups()->create([
+            'deployment_id' => $this->deployment->id,
+            'kind' => $kind,
+            'file' => $saved['file'],
+            'size' => $saved['size'],
+            'db_connection' => mb_substr($saved['connection'], 0, 20),
+            'database' => mb_substr($saved['database'], 0, 250),
+            'release' => $this->project->active_release,
+            'note' => $restoring ? __('Safety copy before restoring backup #:id', ['id' => $restoring->id]) : null,
+        ]);
+
+        $this->pruneBackups();
+    }
+
+    /** Deletes the backups the retention rules no longer keep (files and rows) and prints the total. */
+    private function pruneBackups(): void
+    {
+        $old = BackupRetention::toDelete($this->project);
+
+        try {
+            $this->exec($this->backupScripts->remove($old->map(fn (Backup $backup) => $backup->file)->all()), 300);
+
+            if ($old->isNotEmpty()) {
+                Backup::whereKey($old->modelKeys())->delete();
+            }
+        } catch (DeployException|ConnectionException $e) {
+            // The new backup is safe; the old ones are removed after the next backup.
+            $this->output()->line('WARNING: '.__('The old backups were not removed: :error', ['error' => $e->getMessage()]));
+        }
+    }
+
+    private function restoreBackup(): Backup
+    {
+        return $this->deployment->restoreBackup
+            ?? throw new DeployException(__('The backup to restore is no longer in AutoDeploy.'));
+    }
+
+    private function maintenanceOn(): void
+    {
+        $this->maintenance = true;
+        $this->exec($this->backupScripts->maintenanceOn());
+    }
+
+    private function restoreDatabase(): void
+    {
+        $file = $this->restoreBackup()->file;
+        $this->holdCancel = true;
+
+        // Never stopped half way: a cancel takes effect after the switch (see $holdCancel).
+        $this->exec($this->backupScripts->restore($file), cancellable: false);
+    }
+
+    private function maintenanceOff(): void
+    {
+        $this->exec($this->backupScripts->maintenanceOff());
+        $this->maintenance = false;
+        $this->holdCancel = false;
+    }
+
+    /**
+     * After a failure while the site is in maintenance mode: runs "Bring the site back up"
+     * anyway (in its own step when the deployment has one), so the site never stays down.
+     */
+    private function bringSiteUp(): void
+    {
+        $this->maintenance = false;
+        $step = $this->deployment->steps()->where('key', 'maintenance_off')->where('status', StepStatus::Pending)->first();
+        $step?->forceFill(['status' => StepStatus::Running, 'started_at' => now()])->save();
+        $out = $step ? new StepOutput($step) : $this->out;
+
+        try {
+            $result = $this->connection()->run(
+                $this->scripts->wrap($this->backupScripts->maintenanceOff(), $this->deployment),
+                function (string $chunk) use ($out) {
+                    $out?->append($chunk);
+
+                    return false;
+                },
+                120,
+            );
+            $ok = $result->successful();
+        } catch (Throwable $e) {
+            $out?->line('✖ '.$e->getMessage());
+            $ok = false;
+        }
+
+        $out?->flush();
+        $step?->forceFill(['status' => $ok ? StepStatus::Finished : StepStatus::Failed, 'finished_at' => now()])->save();
     }
 
     private function cleanup(): void
@@ -246,16 +384,19 @@ class DeploymentRunner
             });
     }
 
-    /** Runs a script on the server, streaming its output into the step log. */
-    private function exec(string $body, ?int $timeout = null): CommandResult
+    /**
+     * Runs a script on the server, streaming its output into the step log.
+     * $cancellable false: a cancel does not stop this command (it waits for the next step).
+     */
+    private function exec(string $body, ?int $timeout = null, bool $cancellable = true): CommandResult
     {
         $out = $this->output();
         $result = $this->connection()->run(
             $this->scripts->wrap($body, $this->deployment),
-            function (string $chunk) use ($out) {
+            function (string $chunk) use ($out, $cancellable) {
                 $out->append($chunk);
 
-                return $out->cancelRequested();
+                return $cancellable && $out->cancelRequested();
             },
             $timeout,
         );
@@ -285,6 +426,10 @@ class DeploymentRunner
             $out->line(($status === DeploymentStatus::Cancelled ? '■ ' : '✖ ').$message);
             $out->flush();
             $step->forceFill(['status' => StepStatus::Failed, 'finished_at' => now()])->save();
+        }
+
+        if ($this->maintenance) {
+            $this->bringSiteUp();
         }
 
         $this->deployment->steps()->where('status', StepStatus::Pending)->update(['status' => StepStatus::Skipped]);

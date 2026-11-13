@@ -463,6 +463,45 @@
             </div>
         </FormSection>
 
+        <!-- Database backups -->
+        <FormSection
+            :title="$t('Database backups')"
+            :description="
+                $t(
+                    'A copy of the database before the migrations of every deploy, so a rollback can bring the data back too.',
+                )
+            "
+            :icon="icons.backups"
+        >
+            <div class="space-y-4 rounded-lg border border-slate-200 p-4">
+                <ToggleInput
+                    v-model="form.backup_before_deploy"
+                    :label="$t('Back up the database before each deploy')"
+                    :description="
+                        $t(
+                            'mysqldump / pg_dump (or a copy of the sqlite file) right before the migrations, into :path. If the backup fails, the deploy stops before the migrations.',
+                            { path: backupsPath },
+                        )
+                    "
+                />
+                <TextInput
+                    v-model="form.keep_db_backups"
+                    type="number"
+                    min="0"
+                    max="20"
+                    class="sm:max-w-xs"
+                    :label="$t('Database backups to keep')"
+                    :hint="
+                        $t(
+                            'The newest ones stay on the server (0–20, 0 = no automatic backups). Their size is on the Backups tab.',
+                        )
+                    "
+                    :error="error('keep_db_backups')"
+                    required
+                />
+            </div>
+        </FormSection>
+
         <!-- Extras -->
         <FormSection
             :title="$t('Extras')"
@@ -548,6 +587,7 @@
 import {
     ChevronRight,
     CircleAlert,
+    DatabaseBackup,
     FolderPlus,
     FolderTree,
     GitBranch,
@@ -654,6 +694,7 @@ export default defineComponent({
                 paths: markRaw(FolderTree),
                 build: markRaw(Hammer),
                 shared: markRaw(Link2),
+                backups: markRaw(DatabaseBackup),
                 extras: markRaw(SlidersHorizontal),
                 save: markRaw(Save),
                 create: markRaw(FolderPlus),
@@ -674,6 +715,8 @@ export default defineComponent({
                 web_user: v.web_user ?? '',
                 manage_web_server: v.manage_web_server ?? false,
                 keep_releases: (v.keep_releases ?? 3) as number | null,
+                backup_before_deploy: v.backup_before_deploy ?? true,
+                keep_db_backups: (v.keep_db_backups ?? 1) as number | null,
                 build_strategy: (v.build_strategy ?? 'local') as BuildStrategy,
                 local_path: v.local_path ?? '',
                 local_build_command: v.local_build_command ?? 'npm run build',
@@ -713,6 +756,15 @@ export default defineComponent({
             );
 
             return `${base}/current/public`;
+        },
+
+        backupsPath(): string {
+            const base = (this.form.deploy_path || this.suggestedPath).replace(
+                /\/+$/,
+                '',
+            );
+
+            return `${base}/backups/db`;
         },
 
         sharedPreview(): string[] {

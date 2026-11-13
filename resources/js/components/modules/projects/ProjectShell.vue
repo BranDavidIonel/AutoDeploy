@@ -98,15 +98,7 @@
         >
             <LoaderCircle class="size-5 shrink-0 animate-spin text-brand-600" />
             <span class="min-w-0 flex-1">
-                <span class="font-semibold">{{
-                    activeDeployment.status === 'pending'
-                        ? $t('Deployment #:id is queued', {
-                              id: activeDeployment.id,
-                          })
-                        : $t('Deployment #:id is running', {
-                              id: activeDeployment.id,
-                          })
-                }}</span>
+                <span class="font-semibold">{{ activeLabel }}</span>
                 <span class="hidden text-brand-700/80 sm:inline">
                     · {{ $t('open the live log') }}</span
                 >
@@ -155,6 +147,7 @@ import {
     Boxes,
     ChevronRight,
     Cog,
+    DatabaseBackup,
     ExternalLink,
     FolderGit2,
     GitBranch,
@@ -246,6 +239,12 @@ export default defineComponent({
                     icon: markRaw(History),
                 },
                 {
+                    key: 'backups',
+                    label: 'Backups',
+                    href: projects.backups.index(id).url,
+                    icon: markRaw(DatabaseBackup),
+                },
+                {
                     key: 'builds',
                     label: 'Builds',
                     href: projects.builds.index(id).url,
@@ -282,6 +281,33 @@ export default defineComponent({
                     icon: markRaw(Cog),
                 },
             ];
+        },
+
+        /** "Deployment #12 is running", or the same for a database backup / restore. */
+        activeLabel(): string {
+            const active = this.activeDeployment;
+
+            if (!active) {
+                return '';
+            }
+
+            const id = { id: active.id };
+            const queued = active.status === 'pending';
+
+            switch (active.type) {
+                case 'backup':
+                    return queued
+                        ? this.$t('Database backup #:id is queued', id)
+                        : this.$t('Database backup #:id is running', id);
+                case 'restore':
+                    return queued
+                        ? this.$t('Database restore #:id is queued', id)
+                        : this.$t('Database restore #:id is running', id);
+                default:
+                    return queued
+                        ? this.$t('Deployment #:id is queued', id)
+                        : this.$t('Deployment #:id is running', id);
+            }
         },
 
         projectsUrl(): string {

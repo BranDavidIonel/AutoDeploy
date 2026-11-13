@@ -111,15 +111,36 @@
         />
         <div class="min-w-0">
             <p class="font-semibold">
-                {{
-                    deployment.status === 'cancelled'
-                        ? $t('The deployment was cancelled')
-                        : $t('The deployment failed')
-                }}
+                {{ errorTitle }}
             </p>
             <p class="mt-0.5 break-words">{{ deployment.error }}</p>
             <p
-                v-if="deployment.status === 'failed' && !deployment.is_live"
+                v-if="
+                    deployment.status === 'failed' &&
+                    deployment.type === 'backup'
+                "
+                class="mt-1.5 text-rose-800/80"
+            >
+                {{ $t('Nothing was changed on the site or in the database.') }}
+            </p>
+            <Link
+                v-else-if="
+                    deployment.status === 'failed' &&
+                    deployment.restore_backup_id
+                "
+                :href="backupsUrl"
+                class="mt-1.5 inline-flex items-center gap-1 font-medium text-rose-700 underline-offset-2 hover:underline"
+                >{{
+                    $t(
+                        'If the restore step ran, the database may be incomplete: the safety backup made first is on the Backups tab',
+                    )
+                }}
+                <ChevronRight class="size-4"
+            /></Link>
+            <p
+                v-else-if="
+                    deployment.status === 'failed' && !deployment.is_live
+                "
                 class="mt-1.5 text-rose-800/80"
             >
                 {{
@@ -469,9 +490,37 @@ export default defineComponent({
         },
 
         title(): string {
-            return this.deployment.type === 'rollback'
-                ? this.$t('Rollback #:id', { id: this.deployment.id })
-                : this.$t('Deployment #:id', { id: this.deployment.id });
+            const id = { id: this.deployment.id };
+
+            switch (this.deployment.type) {
+                case 'rollback':
+                    return this.$t('Rollback #:id', id);
+                case 'backup':
+                    return this.$t('Database backup #:id', id);
+                case 'restore':
+                    return this.$t('Database restore #:id', id);
+                default:
+                    return this.$t('Deployment #:id', id);
+            }
+        },
+
+        errorTitle(): string {
+            const cancelled = this.deployment.status === 'cancelled';
+
+            switch (this.deployment.type) {
+                case 'backup':
+                    return cancelled
+                        ? this.$t('The backup was cancelled')
+                        : this.$t('The backup failed');
+                case 'restore':
+                    return cancelled
+                        ? this.$t('The restore was cancelled')
+                        : this.$t('The restore failed');
+                default:
+                    return cancelled
+                        ? this.$t('The deployment was cancelled')
+                        : this.$t('The deployment failed');
+            }
         },
 
         steps(): DeploymentStep[] {
@@ -534,6 +583,10 @@ export default defineComponent({
 
         releasesUrl(): string {
             return projects.releases.index(this.deployment.project_id).url;
+        },
+
+        backupsUrl(): string {
+            return projects.backups.index(this.deployment.project_id).url;
         },
 
         commitUrl(): string | null {

@@ -7,7 +7,9 @@ use App\Exceptions\DeployException;
 use App\Exceptions\DeploymentCancelled;
 use App\Models\Build;
 use App\Models\Project;
+use App\Services\Remote\LocalProcess;
 use Illuminate\Support\Number;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -41,17 +43,26 @@ class LocalBuilder
 
         $out->line('$ '.$project->local_build_command.'   (in '.$path.')');
 
-        $process = Process::fromShellCommandline($project->local_build_command, $path, null, null, (int) config('autodeploy.local_build_timeout'));
+        $timeout = (int) config('autodeploy.local_build_timeout');
+        $process = $this->buildProcess($project->local_build_command, $path, $timeout);
         $process->start();
+        $pid = $process->getPid();
 
-        foreach ($process as $chunk) {
-            $out->append($chunk);
+        try {
+            foreach ($process as $chunk) {
+                $out->append($chunk);
 
-            if ($out->cancelRequested()) {
-                $process->stop(3);
+                if ($out->cancelRequested()) {
+                    LocalProcess::stop($process, $pid);
 
-                throw new DeploymentCancelled;
+                    throw new DeploymentCancelled;
+                }
             }
+        } catch (ProcessTimedOutException) {
+            LocalProcess::stop($process, $pid);
+            $out->flush();
+
+            throw new DeployException(__('The local build took longer than :seconds seconds and was stopped (AUTODEPLOY_LOCAL_BUILD_TIMEOUT).', ['seconds' => $timeout]));
         }
 
         $process->wait();
@@ -88,9 +99,11 @@ class LocalBuilder
      */
     private function gitInfo(string $path, string $deployBranch, StepOutput $out): array
     {
-        $commit = $this->git($path, ['rev-parse', 'HEAD']);
+        $head = $this->run($path, ['rev-parse', 'HEAD']);
+        $commit = $head->isSuccessful() ? rtrim($head->getOutput()) : null;
 
         if ($commit === null) {
+            $this->assertTrustedFolder($path, $head, $out);
             $out->line(__('Not a git repository (or git is missing): the server will deploy the tip of :branch.', ['branch' => $deployBranch]));
 
             return ['commit' => null, 'branch' => null];
@@ -115,6 +128,26 @@ class LocalBuilder
         $out->line();
 
         return ['commit' => $commit, 'branch' => $branch];
+    }
+
+    /**
+     * Git refuses a repository that belongs to another user ("dubious ownership"), e.g. a
+     * checkout made by root on the server while AutoDeploy runs as its own user. That is
+     * not "no repository": the uncommitted / unpushed checks cannot run, so stop.
+     */
+    private function assertTrustedFolder(string $path, Process $head, StepOutput $out): void
+    {
+        $error = $head->isStarted() ? $head->getErrorOutput() : '';
+
+        // "safe.directory" is in the hint git prints, in every language.
+        if (! str_contains($error, 'safe.directory')) {
+            return;
+        }
+
+        $lines = array_filter(array_map('trim', preg_split('/\R/', $error) ?: []));
+        $out->line('  '.(reset($lines) ?: ''));
+
+        throw new DeployException(__('Git refuses to read :path: the folder belongs to another user than the one AutoDeploy runs as. Make that user the owner of the folder (chown -R), or add the folder to its git safe.directory list, then deploy again.', ['path' => $path]));
     }
 
     /**
@@ -232,14 +265,33 @@ class LocalBuilder
      */
     private function run(string $path, array $arguments, array $env = [], int $timeout = 30): Process
     {
-        $process = new Process(['git', ...$arguments], $path, $env, null, $timeout);
+        $process = new Process(LocalProcess::command(['git', ...$arguments]), $path, LocalProcess::environment($env), null, $timeout);
+        $pid = null;
 
         try {
-            $process->run();
+            $process->start();
+            $pid = $process->getPid();
+            $process->wait();
+        } catch (ProcessTimedOutException) {
+            // Too slow (e.g. a fetch that hangs): ssh started by git must stop too.
+            LocalProcess::stop($process, $pid, 1);
         } catch (Throwable) {
-            // Git missing or too slow: the process is simply not successful.
+            // Git missing: the process is simply not successful.
         }
 
         return $process;
+    }
+
+    /**
+     * The build command through the shell: cmd.exe on Windows, /bin/sh elsewhere, in a
+     * process group of its own (see LocalProcess) and without AutoDeploy's .env variables.
+     */
+    private function buildProcess(string $command, string $path, int $timeout): Process
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            return Process::fromShellCommandline($command, $path, LocalProcess::environment(), null, $timeout);
+        }
+
+        return new Process(LocalProcess::command(['/bin/sh', '-c', $command]), $path, LocalProcess::environment(), null, $timeout);
     }
 }

@@ -282,6 +282,7 @@
 import {
     ArrowRightLeft,
     Broom,
+    DatabaseBackup,
     FolderOpen,
     GitBranch,
     Globe,
@@ -344,6 +345,7 @@ const ICONS = {
     link: markRaw(Link),
     composer: markRaw(Package),
     build: markRaw(Hammer),
+    backup: markRaw(DatabaseBackup),
     activate: markRaw(ArrowRightLeft),
     webServer: markRaw(Globe),
     cleanup: markRaw(Broom),
@@ -446,6 +448,8 @@ export default defineComponent({
                 this.hooksIn('after_activate').some((hook) => hook.enabled);
             // Same rule as DeploymentPlanner: the setting and a site URL.
             const managesWebServer = p.manage_web_server && !!p.url;
+            // Same rule as Project::backsUpBeforeDeploy().
+            const backsUp = p.backup_before_deploy && p.keep_db_backups > 0;
 
             const nodes: (PipelineNode | null)[] = [
                 {
@@ -505,6 +509,21 @@ export default defineComponent({
                     ),
                     icon: ICONS.build,
                     muted: p.build_strategy === 'none',
+                },
+                {
+                    type: 'system',
+                    key: 'db_backup',
+                    name: this.$t('Back up the database'),
+                    note: backsUp
+                        ? this.$t(
+                              'Right before the migrations, into backups/db/. Keeps the newest :count; a failed backup stops the deploy here.',
+                              { count: p.keep_db_backups },
+                          )
+                        : this.$t(
+                              'Off: turn it on in Settings (Database backups).',
+                          ),
+                    icon: ICONS.backup,
+                    muted: !backsUp,
                 },
                 stage('before_activate'),
                 {

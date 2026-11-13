@@ -2,6 +2,7 @@
 
 namespace Tests\Support;
 
+use App\Services\Deploy\BackupScripts;
 use App\Services\Deploy\DeployScripts;
 use App\Services\Remote\CommandResult;
 use App\Services\Remote\Connection;
@@ -22,6 +23,12 @@ class FakeConnection implements Connection
 
     /** @var array<string, string> */
     public array $files = [];
+
+    /** @var list<array{remote: string, local: string}> */
+    public array $downloads = [];
+
+    /** Database backups made so far (they get numbered file names). */
+    public int $backups = 0;
 
     /** @var (Closure(string): (CommandResult|null))|null */
     private ?Closure $responder;
@@ -49,6 +56,13 @@ class FakeConnection implements Connection
         $this->uploads[] = ['local' => $localFile, 'remote' => $remotePath];
     }
 
+    /** Writes the file put() wrote before, or a small fake gzip file. */
+    public function download(string $remotePath, string $localFile): void
+    {
+        $this->downloads[] = ['remote' => $remotePath, 'local' => $localFile];
+        file_put_contents($localFile, $this->files[$remotePath] ?? (string) gzencode("-- fake dump\n"));
+    }
+
     public function put(string $remotePath, string $contents): void
     {
         $this->files[$remotePath] = $contents;
@@ -70,6 +84,15 @@ class FakeConnection implements Connection
 
     private function defaultResult(string $script): CommandResult
     {
+        // A database backup: a new file in <deploy path>/backups/db/ with the kind in its name.
+        if (str_contains($script, BackupScripts::BACKUP_MARKER)) {
+            preg_match("/DEPLOY_PATH='([^']*)'/", $script, $path);
+            preg_match("/KIND='([a-z_]+)'/", $script, $kind);
+            $file = ($path[1] ?? '/var/www/app').'/backups/db/app-'.(++$this->backups).'-'.($kind[1] ?? 'manual').'.sql.gz';
+
+            return new CommandResult(0, "✔ Backup saved: {$file}\n".BackupScripts::BACKUP_MARKER."\t{$file}\t2048\tmysql\tapp\n");
+        }
+
         if (str_contains($script, 'git fetch --depth 1')) {
             return new CommandResult(0, DeployScripts::COMMIT_MARKER."\t0123456789abcdef0123456789abcdef01234567\tAda\tFix the invoice totals\n");
         }

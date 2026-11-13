@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\BuildStrategy;
 use App\Enums\DeploymentStatus;
+use App\Enums\DeploymentType;
 use App\Http\Controllers\Projects\ProjectPage;
 use App\Http\Requests\ProjectRequest;
 use App\Http\Resources\DeploymentResource;
@@ -45,6 +46,8 @@ class ProjectController extends Controller
                 'run_composer' => true,
                 'composer_flags' => '--no-dev --optimize-autoloader --no-interaction --prefer-dist',
                 'keep_releases' => 3,
+                'backup_before_deploy' => true,
+                'keep_db_backups' => 1,
                 'build_strategy' => BuildStrategy::Local->value,
                 'server_build_command' => 'npm ci && npm run build',
                 'local_build_command' => 'npm run build',
@@ -78,14 +81,16 @@ class ProjectController extends Controller
         // The live check needs the project on each deployment.
         $deployments->getCollection()->each->setRelation('project', $project);
 
-        $recent = $project->deployments()->where('created_at', '>=', now()->subDays(30))->get(['status', 'started_at', 'finished_at']);
+        // The statistics count deploys and rollbacks, not database backups / restores.
+        $releases = fn () => $project->deployments()->whereIn('type', DeploymentType::releases());
+        $recent = $releases()->where('created_at', '>=', now()->subDays(30))->get(['status', 'started_at', 'finished_at']);
         $done = $recent->whereIn('status', [DeploymentStatus::Finished, DeploymentStatus::Failed]);
 
         return Inertia::render('projects/Show', [
             ...ProjectPage::props($project),
             'deployments' => DeploymentResource::collection($deployments),
             'stats' => [
-                'total' => $project->deployments()->count(),
+                'total' => $releases()->count(),
                 'last30' => $recent->count(),
                 'successRate' => $done->count() > 0
                     ? (int) round($done->where('status', DeploymentStatus::Finished)->count() / $done->count() * 100)

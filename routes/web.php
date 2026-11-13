@@ -6,6 +6,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeploymentController;
 use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\Projects\BackupController;
 use App\Http\Controllers\Projects\BuildController;
 use App\Http\Controllers\Projects\EnvironmentController;
 use App\Http\Controllers\Projects\HookController;
@@ -53,6 +54,12 @@ Route::middleware('auth')->group(function () {
         Route::get('releases', [ReleaseController::class, 'index'])->name('releases.index');
         Route::post('releases/sync', [ReleaseController::class, 'sync'])->name('releases.sync');
         Route::post('releases/{deployment}/rollback', [ReleaseController::class, 'rollback'])->name('releases.rollback');
+
+        Route::get('backups', [BackupController::class, 'index'])->name('backups.index');
+        Route::post('backups', [BackupController::class, 'store'])->name('backups.store');
+        Route::post('backups/{backup}/restore', [BackupController::class, 'restore'])->name('backups.restore');
+        Route::get('backups/{backup}/download', [BackupController::class, 'download'])->name('backups.download');
+        Route::delete('backups/{backup}', [BackupController::class, 'destroy'])->name('backups.destroy');
 
         Route::get('builds', [BuildController::class, 'index'])->name('builds.index');
         Route::post('builds', [BuildController::class, 'store'])->name('builds.store');

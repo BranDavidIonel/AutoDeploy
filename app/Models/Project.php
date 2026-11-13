@@ -4,7 +4,9 @@ namespace App\Models;
 
 use App\Enums\BuildStrategy;
 use App\Enums\DeploymentStatus;
+use App\Enums\DeploymentType;
 use App\Enums\HookStage;
+use App\Enums\StepStatus;
 use Database\Factories\ProjectFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -29,6 +31,8 @@ use Illuminate\Support\Str;
  * @property bool $run_composer
  * @property string $composer_flags
  * @property int $keep_releases
+ * @property bool $backup_before_deploy
+ * @property int $keep_db_backups
  * @property BuildStrategy $build_strategy
  * @property string $server_build_command
  * @property string|null $local_path
@@ -66,6 +70,8 @@ class Project extends Model
         'run_composer',
         'composer_flags',
         'keep_releases',
+        'backup_before_deploy',
+        'keep_db_backups',
         'build_strategy',
         'server_build_command',
         'local_path',
@@ -95,6 +101,8 @@ class Project extends Model
         'run_composer' => true,
         'composer_flags' => '--no-dev --optimize-autoloader --no-interaction --prefer-dist',
         'keep_releases' => 3,
+        'backup_before_deploy' => true,
+        'keep_db_backups' => 1,
         'build_strategy' => 'local',
         'server_build_command' => 'npm ci && npm run build',
         'local_build_command' => 'npm run build',
@@ -115,6 +123,8 @@ class Project extends Model
             'auto_deploy' => 'boolean',
             'scheduler_enabled' => 'boolean',
             'keep_releases' => 'integer',
+            'backup_before_deploy' => 'boolean',
+            'keep_db_backups' => 'integer',
             'keep_builds' => 'integer',
             'shared_dirs' => 'array',
             'shared_files' => 'array',
@@ -160,16 +170,29 @@ class Project extends Model
         return $this->hasMany(Deployment::class)->latest('id');
     }
 
-    /** @return HasOne<Deployment, $this> */
+    /**
+     * The newest deploy or rollback (backups and restores do not count as "last deploy").
+     *
+     * @return HasOne<Deployment, $this>
+     */
     public function latestDeployment(): HasOne
     {
-        return $this->hasOne(Deployment::class)->latestOfMany();
+        return $this->hasOne(Deployment::class)->ofMany(
+            ['id' => 'max'],
+            fn ($query) => $query->whereIn('type', DeploymentType::releases()),
+        );
     }
 
     /** @return HasMany<Build, $this> */
     public function builds(): HasMany
     {
         return $this->hasMany(Build::class)->latest('id');
+    }
+
+    /** @return HasMany<Backup, $this> */
+    public function backups(): HasMany
+    {
+        return $this->hasMany(Backup::class)->latest('id');
     }
 
     /** @return HasMany<Worker, $this> */
@@ -216,6 +239,53 @@ class Project extends Model
     public function currentPath(): string
     {
         return $this->deployPath().'/current';
+    }
+
+    /** Database backups: outside releases/ and shared/, so a rollback or a cleanup never touches them. */
+    public function backupsPath(): string
+    {
+        return $this->deployPath().'/backups/db';
+    }
+
+    /** True when every deploy backs up the database before its migrations. */
+    public function backsUpBeforeDeploy(): bool
+    {
+        return $this->backup_before_deploy && $this->keep_db_backups > 0;
+    }
+
+    /**
+     * The database backup a rollback to $target can put back: the newest backup made
+     * while that release was live with its own database.
+     *
+     * A release goes live with its own database through its deploy (its migrations ran)
+     * or through a rollback that restored the database. A rollback that kept the newer
+     * database does not count: backups made after it hold the tables of the newer
+     * release, so the older backup before it is used. In a plain history this is the
+     * backup made by the deploy that came right after the release, before its migrations.
+     */
+    public function rollbackBackupFor(Deployment $target): ?Backup
+    {
+        if (! $target->release) {
+            return null;
+        }
+
+        // Each time the release went live (newest first).
+        $starts = $this->deployments()
+            ->whereIn('type', DeploymentType::releases())
+            ->where('release', $target->release)
+            ->whereHas('steps', fn ($query) => $query->where('key', 'activate')->where('status', StepStatus::Finished))
+            ->get(['id', 'type', 'restore_backup_id']);
+
+        return $this->backups()
+            ->where('release', $target->release)
+            ->get()
+            ->first(function (Backup $backup) use ($starts) {
+                $madeBy = $backup->deployment_id ?? PHP_INT_MAX;
+                $start = $starts->first(fn (Deployment $deployment) => $deployment->id < $madeBy);
+
+                return $start !== null
+                    && ($start->type === DeploymentType::Deploy || $start->restore_backup_id !== null);
+            });
     }
 
     /** Host of the site URL in lower case (app.example.com), null without a URL. */

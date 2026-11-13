@@ -20,8 +20,8 @@ return [
     ],
 
     /*
-    | Bash used by servers of type "This machine" (deploys on the computer that runs AutoDeploy).
-    | Empty = auto-detect (/bin/bash on Linux, Git Bash on Windows).
+    | Bash used by servers of type "This machine" (deploys on the computer that runs AutoDeploy,
+    | as the user AutoDeploy runs as). Empty = auto-detect (/bin/bash on Linux, Git Bash on Windows).
     */
     'local_shell' => env('AUTODEPLOY_LOCAL_SHELL'),
 
@@ -45,14 +45,17 @@ return [
     /*
     | Start a queue worker in the background when a deployment is queued and no worker runs
     | (for example when Apache serves AutoDeploy and nobody ran "php artisan queue:work").
-    | That worker stops by itself once the queue is empty. Turn it off where Supervisor
-    | keeps a worker running.
+    | That worker stops by itself once the queue is empty.
+    | Turn it off (false) where systemd or Supervisor keeps a worker running, e.g. on a Linux
+    | server: a worker started from a web request runs as the PHP-FPM / Apache user and
+    | belongs to that service, so restarting PHP-FPM or Apache would also end a deploy.
     */
     'auto_worker' => (bool) env('AUTODEPLOY_AUTO_WORKER', true),
 
     /*
     | PHP command line binary used to start that worker. Empty = auto-detect: the PHP that
-    | runs AutoDeploy, the php.exe next to the loaded php.ini (Apache on Windows), the PATH.
+    | runs AutoDeploy, the php.exe next to the loaded php.ini (Apache on Windows), php8.4
+    | next to PHP-FPM 8.4 (Debian / Ubuntu), the PATH.
     */
     'php_binary' => env('AUTODEPLOY_PHP_BINARY'),
 

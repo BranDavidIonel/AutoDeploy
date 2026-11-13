@@ -2,6 +2,7 @@
 
 namespace App\Services\Queue;
 
+use App\Services\Remote\LocalProcess;
 use App\Services\Remote\Shell;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\ExecutableFinder;
@@ -30,7 +31,7 @@ class WorkerLauncher
 
         $windows = PHP_OS_FAMILY === 'Windows';
         $log = storage_path('logs/queue-worker.log');
-        $command = $this->commandLine($php, base_path('artisan'), $connection, $log, $windows);
+        $command = $this->commandLine($php, base_path('artisan'), $connection, $log, $windows, $windows ? null : LocalProcess::setsid());
 
         // Linux: the command appends to the log itself; Windows: see commandLine().
         if (! $this->spawn($command, base_path(), $windows ? $log : null, $windows)) {
@@ -47,12 +48,14 @@ class WorkerLauncher
     /**
      * The shell command that starts the worker and returns at once:
      * Windows (cmd.exe): start "" /B ... (no window, not tied to the request);
-     * Linux / macOS (sh): nohup ... >> log 2>&1 & (keeps running after the request ends).
+     * Linux / macOS (sh): [setsid] nohup ... >> log 2>&1 & (keeps running after the
+     * request ends; with setsid in a session of its own, so no signal meant for the
+     * PHP-FPM / Apache process group reaches it).
      * On Windows the log is not in the command: cmd.exe keeps a file it redirects to
      * locked while the worker runs, so the next worker could not start. spawn() gives
      * the log to the worker instead.
      */
-    public function commandLine(string $php, string $artisan, string $connection, string $log, bool $windows): string
+    public function commandLine(string $php, string $artisan, string $connection, string $log, bool $windows, ?string $setsid = null): string
     {
         $parts = array_map(
             fn (string $part) => $this->quote($part, $windows),
@@ -61,9 +64,13 @@ class WorkerLauncher
 
         $command = implode(' ', $parts);
 
-        return $windows
-            ? "start \"\" /B {$command}"
-            : "nohup {$command} >> {$this->quote($log, false)} 2>&1 &";
+        if ($windows) {
+            return "start \"\" /B {$command}";
+        }
+
+        $detach = $setsid ? $this->quote($setsid, false).' nohup' : 'nohup';
+
+        return "{$detach} {$command} >> {$this->quote($log, false)} 2>&1 &";
     }
 
     /**
@@ -102,9 +109,10 @@ class WorkerLauncher
     }
 
     /**
-     * The PHP command line binary. Under Apache (mod_php) PHP_BINARY is not the
-     * command line PHP, so: the configured one, the php.exe next to the loaded
-     * php.ini (XAMPP on Windows), then Symfony's finder (the running PHP for the
+     * The PHP command line binary. Under a web server (mod_php, PHP-FPM) PHP_BINARY is
+     * not the command line PHP, so: the configured one, the php.exe next to the loaded
+     * php.ini (XAMPP on Windows), the php8.4 of the same version (Debian / Ubuntu, where
+     * "php" may be another version), then Symfony's finder (the running PHP for the
      * command line and the built-in server, PHP_BINDIR, the PATH).
      */
     public function phpBinary(): ?string
@@ -115,11 +123,15 @@ class WorkerLauncher
             return $this->existing($configured);
         }
 
-        if (PHP_OS_FAMILY === 'Windows' && ! in_array(PHP_SAPI, ['cli', 'cli-server', 'phpdbg'], true)) {
-            $ini = php_ini_loaded_file();
-            $candidate = $ini ? dirname($ini).DIRECTORY_SEPARATOR.'php.exe' : null;
+        if (! in_array(PHP_SAPI, ['cli', 'cli-server', 'phpdbg'], true)) {
+            if (PHP_OS_FAMILY === 'Windows') {
+                $ini = php_ini_loaded_file();
+                $candidate = $ini ? dirname($ini).DIRECTORY_SEPARATOR.'php.exe' : null;
 
-            if ($candidate && is_file($candidate)) {
+                if ($candidate && is_file($candidate)) {
+                    return $candidate;
+                }
+            } elseif ($candidate = $this->sameVersionBinary(PHP_BINDIR)) {
                 return $candidate;
             }
         }
@@ -127,6 +139,14 @@ class WorkerLauncher
         $found = (new PhpExecutableFinder)->find(false);
 
         return $found ? $this->existing($found) : null;
+    }
+
+    /** "<dir>/php8.4" for PHP 8.4, as Debian / Ubuntu name it, when it is there. */
+    public function sameVersionBinary(string $directory): ?string
+    {
+        $candidate = rtrim($directory, '/\\').DIRECTORY_SEPARATOR.'php'.PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;
+
+        return is_file($candidate) ? $candidate : null;
     }
 
     /** The full path of a binary (a path, or a name looked up in the PATH), null when missing. */

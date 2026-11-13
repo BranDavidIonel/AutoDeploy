@@ -86,6 +86,18 @@
                                         class="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700 ring-1 ring-brand-100"
                                         >{{ $t('Newest') }}</span
                                     >
+                                    <span
+                                        v-if="backupFor(release)"
+                                        class="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-100"
+                                        :title="
+                                            $t(
+                                                'A rollback to this release can also restore its database.',
+                                            )
+                                        "
+                                    >
+                                        <DatabaseBackup class="size-3" />
+                                        {{ $t('Database backup') }}
+                                    </span>
                                 </div>
 
                                 <p
@@ -199,6 +211,26 @@
                                     @click="target = release"
                                     >{{ $t('Roll back to this') }}</AppButton
                                 >
+                                <span
+                                    v-else
+                                    class="inline-flex"
+                                    :title="
+                                        previousRelease ? '' : noPreviousHint
+                                    "
+                                >
+                                    <AppButton
+                                        size="sm"
+                                        :icon="Undo2"
+                                        :disabled="
+                                            !previousRelease ||
+                                            !!activeDeployment
+                                        "
+                                        @click="target = previousRelease"
+                                        >{{
+                                            $t('Back to the previous version')
+                                        }}</AppButton
+                                    >
+                                </span>
                             </div>
                         </div>
                     </li>
@@ -277,9 +309,14 @@
                         <p>
                             {{
                                 $t(
-                                    'Database migrations are NOT reverted by a rollback. If a release changed the database, check that the older code still works with it.',
+                                    'A plain rollback does not revert database migrations. When the database backup of an older release is still on the server, the rollback can restore it too (safety backup first, maintenance mode meanwhile).',
                                 )
                             }}
+                            <Link
+                                :href="backupsUrl"
+                                class="font-medium text-amber-800 underline underline-offset-2 hover:text-amber-950"
+                                >{{ $t('Backups') }}</Link
+                            >
                         </p>
                     </div>
 
@@ -294,12 +331,10 @@
             </div>
         </div>
 
-        <ConfirmModal
+        <RollbackModal
             :show="target !== null"
-            :title="$t('Roll back to this release?')"
-            :message="confirmMessage"
-            :confirm-label="$t('Roll back')"
-            variant="primary"
+            :target="target"
+            :backup="target ? backupFor(target) : null"
             :processing="rollingBack"
             @confirm="rollback"
             @close="target = null"
@@ -310,6 +345,7 @@
 <script lang="ts">
 import {
     Clock,
+    DatabaseBackup,
     FolderClock,
     GitBranch,
     GitCommitHorizontal,
@@ -320,23 +356,24 @@ import {
     RotateCcw,
     ScrollText,
     TriangleAlert,
+    Undo2,
     UserRound,
 } from '@lucide/vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import type { PropType } from 'vue';
 import { defineComponent, markRaw } from 'vue';
 import AppButton from '@/components/buttons/AppButton.vue';
 import AppCard from '@/components/general/AppCard.vue';
 import EmptyState from '@/components/general/EmptyState.vue';
 import StatusBadge from '@/components/general/StatusBadge.vue';
-import ConfirmModal from '@/components/modals/ConfirmModal.vue';
 import ProjectShell from '@/components/modules/projects/ProjectShell.vue';
+import RollbackModal from '@/components/modules/projects/RollbackModal.vue';
 import deployments from '@/routes/deployments';
 import projects from '@/routes/projects';
-import type { Build, Card, Deployment, Project } from '@/types';
+import type { Backup, Build, Card, Deployment, Project } from '@/types';
 import { formatDateTime, timeAgo } from '@/utils/format';
 
-/** The release folders kept on the server, with an instant rollback to any of them. */
+/** The release folders kept on the server, with an instant rollback to any of them (optionally with the database). */
 export default defineComponent({
     name: 'ProjectsReleases',
 
@@ -344,15 +381,17 @@ export default defineComponent({
         AppButton,
         AppCard,
         Clock,
-        ConfirmModal,
+        DatabaseBackup,
         EmptyState,
         FolderClock,
         GitBranch,
         GitCommitHorizontal,
         Head,
+        Link,
         Package,
         ProjectShell,
         Radio,
+        RollbackModal,
         StatusBadge,
         TriangleAlert,
         UserRound,
@@ -369,6 +408,11 @@ export default defineComponent({
             required: true,
         },
         releases: { type: Array as PropType<Deployment[]>, required: true },
+        /** Deployment id → the database backup a rollback to that release can put back. */
+        rollbackBackups: {
+            type: Object as PropType<Record<string, Backup>>,
+            default: () => ({}),
+        },
     },
 
     data() {
@@ -380,6 +424,7 @@ export default defineComponent({
             RefreshCw: markRaw(RefreshCw),
             RotateCcw: markRaw(RotateCcw),
             ScrollText: markRaw(ScrollText),
+            Undo2: markRaw(Undo2),
         };
     },
 
@@ -393,24 +438,31 @@ export default defineComponent({
             return this.liveIndex === -1 ? -1 : this.liveIndex + 1;
         },
 
-        confirmMessage(): string {
-            if (!this.target) {
-                return '';
-            }
+        /** The release right before the live one ("Back to the previous version"), if it is still on the server. */
+        previousRelease(): Deployment | null {
+            return this.previousIndex === -1
+                ? null
+                : (this.releases[this.previousIndex] ?? null);
+        },
 
+        noPreviousHint(): string {
             return this.$t(
-                'The site switches to release :release (commit :commit) right away and the "After going live" commands run again. Database migrations are not reverted.',
-                {
-                    release: this.target.release ?? '—',
-                    commit: this.target.short_commit ?? '—',
-                },
+                'There is no older release on the server yet: the first deploy has nothing to go back to.',
             );
+        },
+
+        backupsUrl(): string {
+            return projects.backups.index(this.project.id).url;
         },
     },
 
     methods: {
         formatDateTime,
         timeAgo,
+
+        backupFor(release: Deployment): Backup | null {
+            return this.rollbackBackups[String(release.id)] ?? null;
+        },
 
         deploymentUrl(id: number): string {
             return deployments.show(id).url;
@@ -434,7 +486,7 @@ export default defineComponent({
             );
         },
 
-        rollback(): void {
+        rollback(restoreDatabase: boolean): void {
             if (!this.target) {
                 return;
             }
@@ -442,7 +494,7 @@ export default defineComponent({
             router.post(
                 projects.releases.rollback([this.project.id, this.target.id])
                     .url,
-                {},
+                { restore_database: restoreDatabase },
                 {
                     onStart: () => (this.rollingBack = true),
                     onFinish: () => {

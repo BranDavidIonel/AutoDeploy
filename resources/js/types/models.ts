@@ -113,10 +113,16 @@ export type DeploymentStep = {
     duration: number | null;
 };
 
+/** deploy / rollback change the code; backup / restore only the database (app/Enums/DeploymentType.php). */
+export type DeploymentType = 'deploy' | 'rollback' | 'backup' | 'restore';
+
 export type Deployment = {
     id: number;
     project_id: number;
-    type: 'deploy' | 'rollback';
+    type: DeploymentType;
+    type_label: string;
+    /** The database backup a restore (or a rollback with the database) puts back. */
+    restore_backup_id: number | null;
     status: DeploymentStatus;
     status_label: string;
     is_active: boolean;
@@ -165,6 +171,10 @@ export type Project = {
     run_composer: boolean;
     composer_flags: string;
     keep_releases: number;
+    /** Every deploy backs up the database before its migrations. */
+    backup_before_deploy: boolean;
+    /** Database backups kept on the server (0 = no automatic backups). */
+    keep_db_backups: number;
     build_strategy: BuildStrategy;
     build_strategy_label: string;
     server_build_command: string;
@@ -191,6 +201,7 @@ export type Project = {
         releases: string;
         shared: string;
         public: string;
+        backups: string;
     };
     server?: Server;
     latest_deployment?: Deployment | null;
@@ -210,6 +221,26 @@ export type Build = {
     short_commit: string | null;
     branch: string | null;
     user?: string | null;
+    created_at: string;
+};
+
+export type BackupKind = 'before_deploy' | 'manual' | 'before_restore';
+
+/** A database backup kept on the server (app/Http/Resources/BackupResource.php). */
+export type Backup = {
+    id: number;
+    kind: BackupKind;
+    kind_label: string;
+    file: string;
+    file_name: string;
+    size: number;
+    db_connection: string;
+    database: string | null;
+    release: string | null;
+    note: string | null;
+    /** The deployment that made it (the deploy for "before deploy" backups). */
+    deployment_id: number | null;
+    deployment_type?: DeploymentType | null;
     created_at: string;
 };
 

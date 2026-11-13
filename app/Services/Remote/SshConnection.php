@@ -70,6 +70,16 @@ class SshConnection implements Connection
         }
     }
 
+    public function download(string $remotePath, string $localFile): void
+    {
+        if ($this->client()->get($remotePath, $localFile) === false) {
+            throw new ConnectionException(__('Download of :path failed: :error', [
+                'path' => $remotePath,
+                'error' => $this->client()->getLastSFTPError() ?: __('unknown error'),
+            ]));
+        }
+    }
+
     public function put(string $remotePath, string $contents): void
     {
         if (! $this->client()->put($remotePath, $contents)) {

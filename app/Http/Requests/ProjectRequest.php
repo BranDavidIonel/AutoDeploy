@@ -36,6 +36,9 @@ class ProjectRequest extends FormRequest
             'run_composer' => ['boolean'],
             'composer_flags' => ['nullable', 'string', 'max:255'],
             'keep_releases' => ['required', 'integer', 'between:1,20'],
+            // A small server: one database backup by default, 0 = no automatic backups.
+            'backup_before_deploy' => ['boolean'],
+            'keep_db_backups' => ['sometimes', 'required', 'integer', 'between:0,20'],
             'build_strategy' => ['required', Rule::enum(BuildStrategy::class)],
             'server_build_command' => ['required', 'string', 'max:255'],
             'local_path' => [Rule::requiredIf(fn () => $this->input('build_strategy') === BuildStrategy::Local->value), 'nullable', 'string', 'max:500'],

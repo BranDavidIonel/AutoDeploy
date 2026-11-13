@@ -8,6 +8,7 @@ use App\Enums\DeploymentType;
 use App\Enums\HookStage;
 use App\Exceptions\DeployException;
 use App\Jobs\RunDeployment;
+use App\Models\Backup;
 use App\Models\Deployment;
 use App\Models\Project;
 use App\Models\User;
@@ -67,8 +68,14 @@ class DeploymentPlanner
         return $deployment;
     }
 
-    /** Points "current" back to the release of an earlier deployment. */
-    public function rollback(Project $project, Deployment $target, ?User $user = null): Deployment
+    /**
+     * Points "current" back to the release of an earlier deployment.
+     *
+     * With $restoreDatabase the database goes back too, to the backup made while that
+     * release was live (Project::rollbackBackupFor()): safety backup of the current
+     * database, maintenance mode, restore, switch, after-live steps, site up.
+     */
+    public function rollback(Project $project, Deployment $target, ?User $user = null, bool $restoreDatabase = false): Deployment
     {
         $this->assertIdle($project);
 
@@ -80,10 +87,18 @@ class DeploymentPlanner
             throw new DeployException(__('This release is already live.'));
         }
 
-        $deployment = DB::transaction(function () use ($project, $target, $user) {
+        $backup = null;
+
+        if ($restoreDatabase) {
+            $backup = $project->rollbackBackupFor($target)
+                ?? throw new DeployException(__('There is no database backup for this release on the server any more. Roll back without the database.'));
+        }
+
+        $deployment = DB::transaction(function () use ($project, $target, $user, $backup) {
             $deployment = $project->deployments()->create([
                 'user_id' => $user?->id,
                 'build_id' => $target->build_id,
+                'restore_backup_id' => $backup?->id,
                 'type' => DeploymentType::Rollback,
                 'status' => DeploymentStatus::Pending,
                 'triggered_by' => 'manual',
@@ -93,15 +108,24 @@ class DeploymentPlanner
                 'commit_author' => $target->commit_author,
                 'release' => $target->release,
                 'build_source' => $target->build_source,
-                'note' => __('Rollback to release :release (deployment #:id)', ['release' => $target->release, 'id' => $target->id]),
+                'note' => $backup
+                    ? __('Rollback to release :release (deployment #:id) with the database backup #:backup', ['release' => $target->release, 'id' => $target->id, 'backup' => $backup->id])
+                    : __('Rollback to release :release (deployment #:id)', ['release' => $target->release, 'id' => $target->id]),
             ]);
 
-            $steps = [
-                ['check_release', 'Check release on the server'],
-                ['activate', 'Activate release'],
-                ...$this->webServerSteps($project),
-                ...$this->afterActivateSteps($project),
-            ];
+            $steps = [['check_release', 'Check release on the server']];
+
+            if ($backup) {
+                array_push($steps, ...$this->restoreSteps());
+            }
+
+            $steps[] = ['activate', 'Activate release'];
+            array_push($steps, ...$this->webServerSteps($project));
+            array_push($steps, ...$this->afterActivateSteps($project));
+
+            if ($backup) {
+                $steps[] = ['maintenance_off', 'Bring the site back up'];
+            }
 
             if ($project->health_check_url) {
                 $steps[] = ['health', 'Health check'];
@@ -115,6 +139,31 @@ class DeploymentPlanner
         RunDeployment::dispatch($deployment);
 
         return $deployment;
+    }
+
+    /** "Back up now": a database backup that runs in the queue, with a live log like a deploy. */
+    public function backup(Project $project, ?User $user = null): Deployment
+    {
+        $this->assertIdle($project);
+
+        return $this->queue($project, [
+            'user_id' => $user?->id,
+            'type' => DeploymentType::Backup,
+            'note' => __('Database backup'),
+        ], [['db_backup', 'Back up the database']]);
+    }
+
+    /** Puts a database backup back, after a safety backup of the current database, in maintenance mode. */
+    public function restore(Project $project, Backup $backup, ?User $user = null): Deployment
+    {
+        $this->assertIdle($project);
+
+        return $this->queue($project, [
+            'user_id' => $user?->id,
+            'restore_backup_id' => $backup->id,
+            'type' => DeploymentType::Restore,
+            'note' => __('Restore of the database backup #:id (:file)', ['id' => $backup->id, 'file' => $backup->fileName()]),
+        ], [...$this->restoreSteps(), ['maintenance_off', 'Bring the site back up']]);
     }
 
     /** Runs a deployment again with the same options (same build source, build and branch). */
@@ -158,6 +207,11 @@ class DeploymentPlanner
             $steps[] = ['server_build', 'Build assets on the server'];
         } elseif ($source->uploadsArchive()) {
             $steps[] = ['upload_build', 'Upload build'];
+        }
+
+        // Right before the migrations ("Before going live" hooks): a failing backup stops the deploy there.
+        if ($project->backsUpBeforeDeploy()) {
+            $steps[] = ['db_backup', 'Back up the database'];
         }
 
         foreach ($project->hooksFor(HookStage::BeforeActivate) as $hook) {
@@ -211,6 +265,48 @@ class DeploymentPlanner
         }
 
         return $steps;
+    }
+
+    /**
+     * The start of every restore: the backup file is checked, the current database is
+     * backed up (no restore without it), the site goes into maintenance mode, the backup
+     * goes back. "Bring the site back up" comes later (and runs anyway when a step fails).
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function restoreSteps(): array
+    {
+        return [
+            ['check_backup', 'Check the backup file'],
+            ['db_backup', 'Back up the current database first'],
+            ['maintenance_on', 'Put the site in maintenance mode'],
+            ['db_restore', 'Restore the database'],
+        ];
+    }
+
+    /**
+     * Creates a deployment of another type (backup, restore) with its steps and queues it.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @param  list<array{0: string, 1: string}>  $steps
+     */
+    private function queue(Project $project, array $attributes, array $steps): Deployment
+    {
+        $deployment = DB::transaction(function () use ($project, $attributes, $steps) {
+            $deployment = $project->deployments()->create([
+                'status' => DeploymentStatus::Pending,
+                'triggered_by' => 'manual',
+                ...$attributes,
+            ]);
+
+            $this->createSteps($deployment, $steps);
+
+            return $deployment;
+        });
+
+        RunDeployment::dispatch($deployment);
+
+        return $deployment;
     }
 
     private function assertIdle(Project $project): void

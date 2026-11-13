@@ -173,6 +173,54 @@ it('accepts a commit pushed to the local branch when it differs from the project
         ->and($output)->toContain('is on origin/feature');
 });
 
+it('stops the deploy when git refuses a folder that belongs to another user', function () {
+    $server = fakeServer();
+
+    // What git does in a checkout of another user (e.g. root) on the server.
+    $_ENV['GIT_TEST_ASSUME_DIFFERENT_OWNER'] = '1';
+
+    try {
+        $deployment = deployLocally($this->project, $this->user);
+    } finally {
+        unset($_ENV['GIT_TEST_ASSUME_DIFFERENT_OWNER']);
+    }
+
+    $step = $deployment->steps->firstWhere('key', 'local_build');
+
+    expect($deployment->status)->toBe(DeploymentStatus::Failed)
+        ->and($deployment->error)->toContain('the folder belongs to another user')
+        ->and($step->output)->toContain('dubious ownership')
+        ->and($step->output)->not->toContain('Not a git repository')
+        ->and(Build::count())->toBe(0)
+        ->and($server->scripts)->toBe([]);
+});
+
+it('builds without the variables of the AutoDeploy .env', function () {
+    fakeServer();
+
+    // Vite would otherwise build the project with the VITE_* values of AutoDeploy.
+    $envDir = $this->root.'/autodeploy';
+    mkdir($envDir);
+    file_put_contents($envDir.'/.env', "AUTODEPLOY_TEST_SECRET=from-dotenv\n");
+    app()->useEnvironmentPath($envDir);
+    app()->loadEnvironmentFrom('.env');
+    $_ENV['AUTODEPLOY_TEST_SECRET'] = 'leaked';
+    $_ENV['AUTODEPLOY_TEST_KEEP'] = 'kept';
+
+    $this->project->update([
+        'local_build_command' => escapeshellarg(PHP_BINARY).' -r "echo \'secret=\'.(getenv(\'AUTODEPLOY_TEST_SECRET\') ?: \'unset\').\' keep=\'.getenv(\'AUTODEPLOY_TEST_KEEP\');"',
+    ]);
+
+    try {
+        $deployment = deployLocally($this->project, $this->user);
+    } finally {
+        unset($_ENV['AUTODEPLOY_TEST_SECRET'], $_ENV['AUTODEPLOY_TEST_KEEP']);
+    }
+
+    expect($deployment->status)->toBe(DeploymentStatus::Finished)
+        ->and($deployment->steps->firstWhere('key', 'local_build')->output)->toContain('secret=unset keep=kept');
+});
+
 it('still builds a folder that is not a git repository', function () {
     fakeServer();
     removeTree($this->work.'/.git');

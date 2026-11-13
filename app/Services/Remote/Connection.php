@@ -16,6 +16,9 @@ interface Connection
     /** Copies a local file to the server (the folder must exist). */
     public function upload(string $localFile, string $remotePath): void;
 
+    /** Copies a file from the server to a local file (streamed, never fully in memory). */
+    public function download(string $remotePath, string $localFile): void;
+
     /** Writes a string to a file on the server (the folder must exist). */
     public function put(string $remotePath, string $contents): void;
 

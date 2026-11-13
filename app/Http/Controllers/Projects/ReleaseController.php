@@ -6,6 +6,7 @@ use App\Enums\DeploymentStatus;
 use App\Enums\DeploymentType;
 use App\Exceptions\DeployException;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\BackupResource;
 use App\Http\Resources\DeploymentResource;
 use App\Models\Deployment;
 use App\Models\Project;
@@ -19,7 +20,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Throwable;
 
-/** The release folders kept on the server, and rollback to one of them. */
+/** The release folders kept on the server, and rollback to one of them (optionally with the database). */
 class ReleaseController extends Controller
 {
     public function index(Project $project): Response
@@ -32,9 +33,17 @@ class ReleaseController extends Controller
             ->get()
             ->each->setRelation('project', $project);
 
+        // For each older release: the database backup a rollback to it can put back (only while its file is kept).
+        $backups = $releases
+            ->reject(fn (Deployment $release) => $release->release === $project->active_release)
+            ->mapWithKeys(fn (Deployment $release) => [$release->id => $project->rollbackBackupFor($release)])
+            ->filter()
+            ->map(fn ($backup) => BackupResource::make($backup));
+
         return Inertia::render('projects/Releases', [
             ...ProjectPage::props($project),
             'releases' => DeploymentResource::collection($releases),
+            'rollbackBackups' => (object) $backups->all(),
         ]);
     }
 
@@ -84,7 +93,7 @@ class ReleaseController extends Controller
     public function rollback(Request $request, Project $project, Deployment $deployment, DeploymentPlanner $planner): RedirectResponse
     {
         try {
-            $rollback = $planner->rollback($project, $deployment, $request->user());
+            $rollback = $planner->rollback($project, $deployment, $request->user(), $request->boolean('restore_database'));
         } catch (DeployException $e) {
             Inertia::flash('error', $e->getMessage());
 

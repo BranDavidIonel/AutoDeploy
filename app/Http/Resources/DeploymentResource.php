@@ -17,6 +17,8 @@ class DeploymentResource extends JsonResource
             'id' => $this->id,
             'project_id' => $this->project_id,
             'type' => $this->type->value,
+            'type_label' => $this->type->label(),
+            'restore_backup_id' => $this->restore_backup_id,
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'is_active' => $this->status->isActive(),

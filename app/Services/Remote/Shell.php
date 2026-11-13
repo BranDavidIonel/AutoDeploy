@@ -67,8 +67,22 @@ final class Shell
             return $path;
         }
 
+        return rtrim(self::homeDirectory(), '/\\').substr($path, 1);
+    }
+
+    /**
+     * Home folder of the user running AutoDeploy. PHP-FPM clears the environment by
+     * default (clear_env), so without HOME it is read from the user database (Linux).
+     */
+    public static function homeDirectory(): string
+    {
         $home = getenv('HOME') ?: getenv('USERPROFILE') ?: ((getenv('HOMEDRIVE') ?: '').(getenv('HOMEPATH') ?: ''));
 
-        return rtrim((string) $home, '/\\').substr($path, 1);
+        if ($home === '' && function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
+            $user = posix_getpwuid(posix_geteuid());
+            $home = is_array($user) ? $user['dir'] : '';
+        }
+
+        return $home;
     }
 }

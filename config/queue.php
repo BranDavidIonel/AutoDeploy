@@ -40,7 +40,9 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => env('DB_QUEUE_TABLE', 'jobs'),
             'queue' => env('DB_QUEUE', 'default'),
-            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 90),
+            // Longer than a deploy (RunDeployment::$timeout = 3600): with two workers (systemd
+            // plus one started by itself) a running deploy must never be handed to the other.
+            'retry_after' => (int) env('DB_QUEUE_RETRY_AFTER', 4000),
             'after_commit' => false,
         ],
 
