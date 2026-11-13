@@ -6,6 +6,7 @@ use App\Models\Worker;
 use App\Services\Remote\CommandResult;
 use App\Services\Workers\SchedulerManager;
 use App\Services\Workers\SupervisorConfig;
+use Symfony\Component\Process\Process;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -58,3 +59,37 @@ it('turns the scheduler cron on and off', function () {
 
     expect($this->project->fresh()->scheduler_enabled)->toBeFalse();
 });
+
+it('writes the scheduler line when the user has no crontab yet, and removes it again', function () {
+    // The real script runs in bash against a fake crontab that keeps its table in a file.
+    $dir = sys_get_temp_dir().'/autodeploy-fake-cron-'.uniqid();
+    mkdir($dir);
+    $table = $dir.'/table';
+    file_put_contents($dir.'/crontab', implode("\n", [
+        '#!/bin/sh',
+        'table="$(dirname "$0")/table"',
+        'if [ "$1" = "-l" ]; then [ -s "$table" ] || { echo "no crontab for user" >&2; exit 1; }; cat "$table"; else cat > "$table"; fi',
+        '',
+    ]));
+    chmod($dir.'/crontab', 0755);
+
+    fakeServer(function (string $script) use ($dir) {
+        $process = new Process(['bash', '-c', $script], null, ['PATH' => $dir.':'.getenv('PATH')]);
+        $process->run();
+
+        return new CommandResult((int) $process->getExitCode(), $process->getOutput().$process->getErrorOutput());
+    });
+
+    $scheduler = app(SchedulerManager::class);
+    $enabled = $scheduler->enable($this->project);
+
+    expect($enabled['ok'])->toBeTrue()
+        ->and(file_get_contents($table))->toContain(SchedulerManager::cronLine($this->project));
+
+    // Enabling twice keeps one line.
+    $scheduler->enable($this->project);
+    expect(substr_count((string) file_get_contents($table), '# autodeploy-project-'.$this->project->id))->toBe(1);
+
+    expect($scheduler->disable($this->project)['ok'])->toBeTrue()
+        ->and((string) file_get_contents($table))->not->toContain('# autodeploy-project-');
+})->skip(PHP_OS_FAMILY === 'Windows', 'Runs the real crontab script in bash (Linux).');

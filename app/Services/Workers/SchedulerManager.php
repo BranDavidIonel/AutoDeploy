@@ -31,8 +31,10 @@ class SchedulerManager
         $line = Shell::quote(self::cronLine($project));
         $marker = Shell::quote(self::marker($project));
 
+        // "|| true": with set -e, a grep that keeps no line (empty crontab, or only our line)
+        // would end the group before the echo and install an empty crontab.
         $result = $this->run($project, implode("\n", [
-            '( $CRONTAB -l 2>/dev/null | grep -vF '.$marker.' ; echo '.$line.' ) | $CRONTAB -',
+            '{ $CRONTAB -l 2>/dev/null | grep -vF '.$marker.' || true; echo '.$line.'; } | $CRONTAB -',
             'echo "✔ Scheduler enabled (crontab of $CRON_USER)"',
             '$CRONTAB -l | grep -F '.$marker,
         ]));
@@ -50,7 +52,7 @@ class SchedulerManager
         $marker = Shell::quote(self::marker($project));
 
         $result = $this->run($project, implode("\n", [
-            '( $CRONTAB -l 2>/dev/null | grep -vF '.$marker.' ) | $CRONTAB -',
+            '{ $CRONTAB -l 2>/dev/null | grep -vF '.$marker.' || true; } | $CRONTAB -',
             'echo "✔ Scheduler disabled (crontab of $CRON_USER)"',
         ]));
 
