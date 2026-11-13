@@ -171,6 +171,7 @@ bazei de date într-un mod incompatibil cu codul vechi, trebuie rezolvat manual.
 - **Pe PC-ul tău (Windows)** – varianta recomandată acum: are acces la folderele proiectelor tale
   pentru build local și la cheia ta SSH. Se pornește cu `start-autodeploy.bat` sau e servit de Apache-ul
   din XAMPP (workerul de coadă pornește singur, vezi mai sus).
-- **Pe server (Linux)** – după upgrade-ul de RAM, poți instala AutoDeploy și pe server; atunci un
-  server de tip „Acest calculator" rulează comenzile direct, fără SSH, iar webhook-ul GitHub
-  (deploy la `git push`) devine util, pentru că serverul e accesibil din internet.
+- **Pe server (Linux)** – AutoDeploy rulează pe același server cu site-urile, ca utilizator fără
+  drepturi, și dă comenzile de root prin SSH către `127.0.0.1` cu o cheie dedicată; build-urile se fac
+  pe server. Webhook-ul GitHub (deploy la `git push`) devine util, pentru că serverul e accesibil din
+  internet. Instalarea: [07 · Instalare pe server](07-instalare-pe-server.md).

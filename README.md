@@ -137,12 +137,24 @@ For development (server + queue + Vite hot reload + logs):
 composer dev
 ```
 
-### On a Linux server (optional, later)
+### Install on a server
 
-AutoDeploy can also run on the server itself (a server of type "This machine" then runs the commands
-directly, without SSH, and the GitHub webhook becomes useful). The steps (web server, Supervisor worker for
-the queue) are in [docs/02-instalare-si-pornire.md](docs/02-instalare-si-pornire.md) (Romanian). Put the app
-behind an extra login: it can run commands as root on the server.
+AutoDeploy can also run on the server it deploys to (Ubuntu 22.04 / 24.04, Apache 2.4, PHP-FPM). The kit in
+[`deploy/server/`](deploy/server) does it in one command, as root, and is safe to run again:
+
+```bash
+git clone https://github.com/<you>/AutoDeploy.git /var/www/autodeploy
+AUTODEPLOY_ADMIN_PASSWORD='a-long-password' bash /var/www/autodeploy/deploy/server/install.sh \
+    --domain deploy.example.com --admin-email you@example.com --setup-local-ssh --certbot
+```
+
+It creates a system user `autodeploy`, its own PHP-FPM pool, an HTTPS Apache site (other sites untouched)
+and a systemd queue worker. AutoDeploy itself runs unprivileged and reaches the server as root over SSH to
+`127.0.0.1`, with a key that only works from the server (`from="127.0.0.1,::1",restrict`).
+`deploy/server/import-local-data.sh` moves the data of your PC install (the SQLite database and its
+`APP_KEY`), `deploy/server/update.sh` updates it later. Put the app behind an IP allowlist or an extra
+password: it can run commands as root. Full guide (Romanian):
+[docs/07-instalare-pe-server.md](docs/07-instalare-pe-server.md).
 
 ## Configuration
 
@@ -353,3 +365,4 @@ The detailed documentation is in [`docs/`](docs/README.md) (in Romanian):
 4. [Code architecture](docs/04-arhitectura.md) – for developers
 5. [Tests](docs/05-teste.md) – the automated tests and the end-to-end test
 6. [Troubleshooting](docs/06-probleme-frecvente.md) – common errors and fixes
+7. [Install on a server](docs/07-instalare-pe-server.md) – `install.sh` on Ubuntu, root over local SSH, moving the PC data

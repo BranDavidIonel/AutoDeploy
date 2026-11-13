@@ -1,0 +1,36 @@
+# AutoDeploy – queue worker, written by deploy/server/install.sh (running it again rewrites this file).
+# It runs everything queued from the web interface: deploys, rollbacks, backups, restores.
+#   status:  systemctl status {{WORKER_UNIT}}
+#   logs:    journalctl -u {{WORKER_UNIT}} -f
+#   new code: php artisan queue:restart (the worker exits after its job, systemd starts it again)
+
+[Unit]
+Description=AutoDeploy queue worker ({{APP_DIR}})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{APP_USER}}
+Group={{APP_USER}}
+WorkingDirectory={{APP_DIR}}
+Environment=HOME={{APP_HOME}}
+Environment=PATH={{APP_HOME}}/bin:/usr/local/bin:/usr/bin:/bin
+Environment=LANG=C.UTF-8
+ExecStart={{PHP_BIN}} {{APP_DIR}}/artisan queue:work database --timeout=3600 --tries=1 --sleep=1
+Restart=always
+RestartSec=5
+
+# A deploy can take up to an hour (--timeout=3600). On stop / restart only the worker gets SIGTERM
+# (KillMode=mixed): it finishes the current deploy, then exits. The git / ssh / npm processes of that
+# deploy are not killed halfway; whatever is still running after TimeoutStopSec is killed.
+KillMode=mixed
+TimeoutStopSec=3660
+
+# The worker needs no privileges: it reaches the server as root over SSH (root@127.0.0.1).
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

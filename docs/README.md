@@ -13,6 +13,7 @@ PC și doar rezultatul se urcă pe server.
 | [04 – Arhitectura codului](04-arhitectura.md)           | developeri        | structura codului, modele și tabele, motorul de deploy, frontend, securitate                      |
 | [05 – Teste](05-teste.md)                               | developeri        | testele Pest, conexiunea falsă, testul end-to-end local și prin SSH                               |
 | [06 – Probleme frecvente](06-probleme-frecvente.md)     | toată lumea       | erori des întâlnite și cum se rezolvă                                                             |
+| [07 – Instalare pe server](07-instalare-pe-server.md)   | cine o instalează | `install.sh` pe Ubuntu (Apache + PHP-FPM), SSH la root@127.0.0.1, mutarea datelor de pe PC        |
 
 Pe scurt, pentru a porni aplicația pe Windows:
 
@@ -20,3 +21,7 @@ Pe scurt, pentru a porni aplicația pe Windows:
 2. dublu-click pe `start-autodeploy.bat`;
 3. intră pe <http://127.0.0.1:8077> cu emailul și parola de admin din `.env`
    (`AUTODEPLOY_ADMIN_EMAIL` / `AUTODEPLOY_ADMIN_PASSWORD`).
+
+Pe un server Ubuntu (Apache + PHP-FPM), AutoDeploy se instalează cu `deploy/server/install.sh` și își ia
+datele de pe PC cu `deploy/server/import-local-data.sh`: vezi
+[07 – Instalare pe server](07-instalare-pe-server.md).

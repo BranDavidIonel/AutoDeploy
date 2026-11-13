@@ -139,12 +139,24 @@ Pentru dezvoltare (server + coadă + Vite cu hot reload + loguri):
 composer dev
 ```
 
-### Pe un server Linux (opțional, pe viitor)
+### Instalare pe server
 
-AutoDeploy poate rula și pe server (atunci un server de tip „Acest calculator" rulează comenzile direct,
-fără SSH, iar webhook-ul GitHub devine util). Pașii (Nginx, worker Supervisor pentru coadă) sunt în
-[docs/02-instalare-si-pornire.md](docs/02-instalare-si-pornire.md#instalare-pe-un-server-linux-opțional-pe-viitor).
-Pune aplicația în spatele unei autentificări suplimentare: poate rula comenzi ca root pe server.
+AutoDeploy poate rula și pe serverul pe care face deploy (Ubuntu 22.04 / 24.04, Apache 2.4, PHP-FPM). Kitul
+din [`deploy/server/`](deploy/server) o face dintr-o comandă, ca root, și poate fi rulat din nou oricând:
+
+```bash
+git clone https://github.com/<contul-tău>/AutoDeploy.git /var/www/autodeploy
+AUTODEPLOY_ADMIN_PASSWORD='o-parolă-lungă' bash /var/www/autodeploy/deploy/server/install.sh \
+    --domain deploy.example.com --admin-email tu@example.com --setup-local-ssh --certbot
+```
+
+Creează un user de sistem `autodeploy`, un pool PHP-FPM propriu, un site Apache pe HTTPS (celelalte site-uri
+rămân neatinse) și un worker de coadă systemd. AutoDeploy rulează neprivilegiat și ajunge la root prin SSH
+la `127.0.0.1`, cu o cheie care merge doar de pe server (`from="127.0.0.1,::1",restrict`).
+`deploy/server/import-local-data.sh` mută datele de pe PC (baza SQLite și `APP_KEY`-ul ei), iar
+`deploy/server/update.sh` face actualizările. Pune aplicația în spatele unei liste de IP-uri sau al unei
+parole în plus: poate rula comenzi ca root. Ghidul complet:
+[docs/07-instalare-pe-server.md](docs/07-instalare-pe-server.md).
 
 ## Configurare
 
@@ -355,3 +367,4 @@ Totul, în detaliu, în [`docs/`](docs/README.md):
 4. [Arhitectura codului](docs/04-arhitectura.md) – pentru developeri
 5. [Teste](docs/05-teste.md) – testele automate și testul end-to-end
 6. [Probleme frecvente](docs/06-probleme-frecvente.md) – erori des întâlnite și soluții
+7. [Instalare pe server](docs/07-instalare-pe-server.md) – `install.sh` pe Ubuntu, root prin SSH local, mutarea datelor de pe PC

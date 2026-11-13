@@ -103,32 +103,8 @@ lângă ea; nu strică nimic (un job e luat o singură dată), dar îl poți evi
 Secretele serverelor (chei private lipite în aplicație, parole, passphrase) se salvează **criptate cu
 `APP_KEY`**. Dacă schimbi `APP_KEY`, trebuie reintroduse.
 
-## Instalare pe un server Linux (opțional, pe viitor)
+## Instalare pe un server Linux
 
-```bash
-git clone https://github.com/BranDavidIonel/AutoDeploy.git /var/www/autodeploy
-cd /var/www/autodeploy
-composer install --no-dev --optimize-autoloader
-cp .env.example .env && php artisan key:generate
-touch database/database.sqlite && php artisan migrate --seed --force
-npm ci && npm run build        # sau urcă public/build făcut pe PC
-php artisan optimize
-```
-
-Apoi:
-
-- Nginx cu `root /var/www/autodeploy/public` (ideal în spatele unei autentificări / doar pe VPN —
-  AutoDeploy poate rula comenzi ca root pe server);
-- un worker Supervisor pentru coadă (și `AUTODEPLOY_AUTO_WORKER=false` în `.env`: Supervisor îl ține
-  pornit, AutoDeploy nu trebuie să mai pornească altul):
-
-```ini
-[program:autodeploy-queue]
-command=php /var/www/autodeploy/artisan queue:work --timeout=3600 --tries=1
-user=root
-autostart=true
-autorestart=true
-stopwaitsecs=3610
-```
-
-- schimbă parola adminului imediat.
+Instalarea pe un server Ubuntu (Apache, PHP-FPM, worker systemd, HTTPS, mutarea datelor de pe PC) e
+descrisă pas cu pas în [07 · Instalare pe server](07-instalare-pe-server.md). Scripturile sunt în
+`deploy/server/`.
